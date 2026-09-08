@@ -22,18 +22,26 @@ type WindowCallbacks = {
   onFocus: (win: BrowserWindow) => void
   onBlur: () => void
 }
+//Aquiles_Bachira
 export function createSettingsWindow(): void {
   if (_settingsWindow) {
     _settingsWindow.focus()
     return
   }
   const isMac = process.platform === 'darwin'
+  const workArea = screen.getPrimaryDisplay().workAreaSize
+  const initWidth = Math.min(600, Math.max(360, workArea.width - 40))
+  const initHeight = Math.min(700, Math.max(500, workArea.height - 80))
   _settingsWindow = new BrowserWindow({
-    width: 600,
-    height: 700,
+    width: initWidth,
+    height: initHeight,
+    minWidth: 360,
+    minHeight: 500,
     title: t('tray.preferences', currentState.language || 'en').replace('...', ''),
     transparent: isMac,
     backgroundColor: isMac ? '#00000000' : '#0f0f0f',
+    resizable: true,
+    maximizable: true,
     ...(isMac
       ? { vibrancy: 'under-window', visualEffectState: 'active', titleBarStyle: 'hiddenInset' }
       : {
@@ -91,15 +99,21 @@ export function setWindowPosition(pos: string): void {
   })
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function resizeWindow(_sizeObj: {
+//Aquiles_Bachira
+export function resizeWindow(sizeObj: {
   width: number
   height: number
   position?: 'right' | 'fullscreen'
 }): void {
-  // Ignored in Full-Screen architecture
+  if (!_settingsWindow || _settingsWindow.isDestroyed()) return
+  const workArea = screen.getPrimaryDisplay().workAreaSize
+  const w = Math.min(Math.max(360, sizeObj.width), workArea.width)
+  const h = Math.min(Math.max(400, sizeObj.height), workArea.height)
+  _settingsWindow.setBounds({ width: w, height: h })
+  _settingsWindow.center()
 }
 
+//Aquiles_Bachira
 export function getCameraDimensions(): { width: number; height: number } {
   const SIZES = [300, 450, 600]
   const sizeIndex = (currentState.sizeIndex as number) ?? 0
@@ -107,20 +121,28 @@ export function getCameraDimensions(): { width: number; height: number } {
   const borderWidth = (currentState.borderWidth as number) ?? 0
   const hasBorder = sizeIndex !== 4 && (currentState.borderGradient as string) !== 'none'
 
+  const displays = screen.getAllDisplays()
+  const display =
+    displays.find((d) => d.id.toString() === currentState.cameraScreenId) ??
+    screen.getPrimaryDisplay()
+  const workArea = display.workAreaSize
+  const maxW = Math.max(160, workArea.width * 0.92)
+  const maxH = Math.max(160, workArea.height * 0.88)
+  const clamp = (w: number, h: number): { w: number; h: number } => {
+    if (w <= maxW && h <= maxH) return { w, h }
+    const scale = Math.min(maxW / w, maxH / h)
+    return { w: Math.round(w * scale), h: Math.round(h * scale) }
+  }
+
   if (sizeIndex === 4) {
-    const displays = screen.getAllDisplays()
-    const display =
-      displays.find((d) => d.id.toString() === currentState.cameraScreenId) ??
-      screen.getPrimaryDisplay()
-    return { width: display.bounds.width, height: display.bounds.height }
+    return { width: display.workArea.width, height: display.workArea.height }
   }
   if (sizeIndex === 3) {
-    const displays = screen.getAllDisplays()
-    const display =
-      displays.find((d) => d.id.toString() === currentState.cameraScreenId) ??
-      screen.getPrimaryDisplay()
-    const pct = (currentState.sidebarWidthPercentage as number) ?? 25
-    return { width: Math.round(display.bounds.width * (pct / 100)), height: display.bounds.height }
+    const pct = (currentState.sidebarWidthPercentage as number) ?? 35
+    const w = Math.round(workArea.width * (pct / 100))
+    const h = workArea.height
+    const c = clamp(w, h)
+    return { width: c.w, height: c.h }
   }
 
   const size = SIZES[sizeIndex] || 300
@@ -134,9 +156,22 @@ export function getCameraDimensions(): { width: number; height: number } {
     h = Math.round(size * (9 / 16))
   }
 
+  const inner = clamp(w, h)
+  w = inner.w
+  h = inner.h
+
   if (hasBorder) {
-    w += borderWidth * 2
-    h += borderWidth * 2
+    const totalW = w + borderWidth * 2
+    const totalH = h + borderWidth * 2
+    const totalClamped = clamp(totalW, totalH)
+    if (totalClamped.w !== totalW || totalClamped.h !== totalH) {
+      const inner2 = clamp(totalW - borderWidth * 2, totalH - borderWidth * 2)
+      w = Math.max(120, inner2.w)
+      h = Math.max(120, inner2.h)
+      return { width: w + borderWidth * 2, height: h + borderWidth * 2 }
+    }
+    w = totalW
+    h = totalH
   }
 
   return { width: w, height: h }

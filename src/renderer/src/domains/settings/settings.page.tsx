@@ -205,7 +205,8 @@ function RecordingSettings({
   return (
     <div className="settings-section">
       <div className="settings-list">
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+        {/* Aquiles_Bachira */}
+        <div className="recording-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
           <div className="settings-row settings-row--column">
             <span className="settings-label">{t('settings.recordingResolution', language)}</span>
             <div className="option-pills">

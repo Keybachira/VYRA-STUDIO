@@ -757,3 +757,93 @@ html[data-platform='win32'] .settings-header {
 .settings-folder-actions .option-pill {
   flex: none;
 }
+
+/* Aquiles_Bachira*/
+@media (max-width: 640px) {
+  .settings-container {
+    padding: 0 16px 20px 16px;
+  }
+  .settings-top-bar {
+    margin-left: -16px;
+    margin-right: -16px;
+    padding: 0 16px 8px 16px;
+  }
+  .settings-header h1 {
+    font-size: 20px;
+  }
+  .settings-tabs {
+    gap: 4px;
+  }
+  .settings-tab {
+    font-size: 11px;
+    padding: 6px 8px;
+  }
+  .settings-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .shape-picker {
+    flex-wrap: wrap;
+  }
+  .shape-btn {
+    flex: 1 1 calc(50% - 6px);
+    min-width: 0;
+  }
+  .gradient-picker {
+    gap: 8px;
+  }
+  .gradient-swatch {
+    width: 32px;
+    height: 32px;
+  }
+  .settings-folder-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .settings-folder-actions {
+    width: 100%;
+  }
+  .settings-folder-actions .option-pill {
+    flex: 1;
+  }
+  .option-pills {
+    gap: 6px;
+  }
+  .option-pill {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 0;
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 400px) {
+  .shape-btn {
+    flex: 1 1 100%;
+  }
+  .option-pill {
+    flex: 1 1 100%;
+  }
+}
+
+/* Aquiles_Bachira*/
+.app-container {
+  max-width: 100vw;
+  max-height: 100vh;
+}
+.camera-view {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+/* Aquiles_Bachira*/
+.recording-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+@media (max-width: 640px) {
+  .recording-grid {
+    grid-template-columns: 1fr;
+  }
+}

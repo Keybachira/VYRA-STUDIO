@@ -20,14 +20,29 @@ const isWindows =
   (navigator.platform.toLowerCase().includes('win') ||
     navigator.userAgent.toLowerCase().includes('windows'))
 
+//Aquiles_Bachira
 function getScreenWidth(): number {
-  if (isWindows) return window.screen?.availWidth ?? window.innerWidth
-  return window.screen?.width ?? window.innerWidth
+  const vw = window.innerWidth || 0
+  const sw = window.screen?.width ?? vw
+  const avail = window.screen?.availWidth ?? sw
+  return Math.min(vw || avail, isWindows ? avail : sw) || vw || sw
 }
 
+//Aquiles_Bachira
 function getScreenHeight(): number {
-  if (isWindows) return window.screen?.availHeight ?? window.innerHeight
-  return window.screen?.height ?? window.innerHeight
+  const vh = window.innerHeight || 0
+  const sh = window.screen?.height ?? vh
+  const availH = window.screen?.availHeight ?? sh
+  return Math.min(vh || availH, isWindows ? availH : sh) || vh || sh
+}
+
+//Aquiles_Bachira
+function clampToViewport(w: number, h: number, sw: number, sh: number): { w: number; h: number } {
+  const maxW = Math.max(160, Math.min(sw * 0.92, sw - 16))
+  const maxH = Math.max(160, Math.min(sh * 0.88, sh - 16))
+  if (w <= maxW && h <= maxH) return { w, h }
+  const scale = Math.min(maxW / w, maxH / h)
+  return { w: Math.round(w * scale), h: Math.round(h * scale) }
 }
 
 export function CameraPage(): React.JSX.Element {
@@ -149,16 +164,32 @@ export function CameraPage(): React.JSX.Element {
         h = Math.round(size * (9 / 16))
       }
 
+      //Aquiles_Bachira
+      const clamped = clampToViewport(w, h, sw, sh)
+      w = clamped.w
+      h = clamped.h
+
       const hasBorder = index !== 4 && borderGradient !== 'none'
       const totalW = hasBorder ? w + borderWidth * 2 : w
       const totalH = hasBorder ? h + borderWidth * 2 : h
+      const clampedTotal = clampToViewport(totalW, totalH, sw, sh)
+
+      if (clampedTotal.w !== totalW || clampedTotal.h !== totalH) {
+        const inner = clampToViewport(totalW - borderWidth * 2, totalH - borderWidth * 2, sw, sh)
+        w = Math.max(120, inner.w)
+        h = Math.max(120, inner.h)
+      }
 
       setCameraWidth(w)
       setCameraHeight(h)
 
       if (isLinux) {
+        //Aquiles_Bachira
+        const finalW = hasBorder ? w + borderWidth * 2 : w
+        const finalH = hasBorder ? h + borderWidth * 2 : h
+        const c = clampToViewport(finalW, finalH, sw, sh)
         if (window.electron) {
-          window.electron.ipcRenderer.send('resize-camera-window', totalW, totalH)
+          window.electron.ipcRenderer.send('resize-camera-window', c.w, c.h)
         }
       } else {
         setCameraX((prev) => Math.min(Math.max(0, prev), window.innerWidth - w))
@@ -206,6 +237,21 @@ export function CameraPage(): React.JSX.Element {
       applySize(sizeIndex, shape)
     }
   }, [initialized, sizeIndex, shape, applySize, sidebarWidthPercentage, sidebarPosition])
+
+  //Aquiles_Bachira
+  useEffect(() => {
+    if (!initialized) return
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const handleResize = (): void => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => applySize(sizeIndex, shape), 120)
+    }
+    window.addEventListener('resize', handleResize)
+    return () => {
+      window.removeEventListener('resize', handleResize)
+      if (timer) clearTimeout(timer)
+    }
+  }, [initialized, sizeIndex, shape, applySize])
 
   if (borderGradient !== currentGradient) {
     setPrevGradient(currentGradient)
@@ -469,6 +515,8 @@ export function CameraPage(): React.JSX.Element {
         style={{
           width: '100%',
           height: '100%',
+          maxWidth: '92vw',
+          maxHeight: '88vh',
           pointerEvents: 'auto',
           padding: sizeIndex === 4 || borderGradient === 'none' ? '0px' : `${borderWidth}px`,
           borderRadius: computedRadius,
@@ -571,8 +619,10 @@ export function CameraPage(): React.JSX.Element {
           position: 'absolute',
           left: `${cameraX}px`,
           top: `${cameraY}px`,
-          width: `${cameraWidth}px`,
-          height: `${cameraHeight}px`,
+          width: `min(${cameraWidth}px, 92vw)`,
+          height: `min(${cameraHeight}px, 88vh)`,
+          maxWidth: '92vw',
+          maxHeight: '88vh',
           pointerEvents: 'auto',
           padding: sizeIndex === 4 || borderGradient === 'none' ? '0px' : `${borderWidth}px`,
           borderRadius: computedRadius,

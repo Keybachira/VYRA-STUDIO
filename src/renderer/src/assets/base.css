@@ -30,3 +30,12 @@ body {
 *::-webkit-scrollbar {
   display: none;
 }
+
+/* Aquiles_Bachira*/
+@media (max-width: 640px) {
+  html,
+  body,
+  #root {
+    overflow-x: hidden;
+  }
+}
