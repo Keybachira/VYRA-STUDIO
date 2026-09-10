@@ -1,5 +1,5 @@
-appId: com.electron.app
-productName: Floating Head Cam
+appId: com.vyra.studio
+productName: VYRA Studio
 directories:
   buildResources: build
 files:
@@ -9,12 +9,13 @@ files:
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  - '!docs/*'
 asarUnpack:
   - resources/**
   - node_modules/ffmpeg-static/**
 win:
   icon: build/icon.ico
-  executableName: Floating Head Cam
+  executableName: VYRA Studio
 nsis:
   artifactName: ${productName}-${version}-setup.${ext}
   shortcutName: ${productName}
@@ -24,23 +25,27 @@ mac:
   icon: build/icon.png
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
-    NSCameraUsageDescription: Application requests access to the device's camera.
-    NSMicrophoneUsageDescription: Application requests access to the device's microphone for recording audio.
-    NSScreenCaptureUsageDescription: Application requests access to capture the screen for recording.
-    NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
-    NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
+    NSCameraUsageDescription: VYRA Studio requests access to the device's camera.
+    NSMicrophoneUsageDescription: VYRA Studio requests access to the device's microphone for recording audio.
+    NSScreenCaptureUsageDescription: VYRA Studio requests access to capture the screen for recording.
+    NSDocumentsFolderUsageDescription: VYRA Studio requests access to the user's Documents folder.
+    NSDownloadsFolderUsageDescription: VYRA Studio requests access to the user's Downloads folder.
   notarize: true
 dmg:
   artifactName: ${productName}-${version}.${ext}
 linux:
   target:
     - AppImage
-    - snap
     - deb
   icon: build/icon.png
-  maintainer: Freddy Danilo <freddydanilo@users.noreply.github.com>
-  vendor: Freddy Danilo <freddydanilo@users.noreply.github.com>
+  maintainer: Keybachira
+  vendor: VYRA Studio
   category: Utility
+  desktop:
+    Name: VYRA Studio
+    Comment: Your camera. Your space.
+    Keywords: camera;recording;overlay;studio;
+    StartupWMClass: VYRA Studio
 snap:
   plugs:
     - browser-support
@@ -62,5 +67,3 @@ appImage:
 npmRebuild: false
 releaseInfo:
   releaseNotesFile: build/release-notes.md
-publish:
-  provider: github
