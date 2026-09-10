@@ -1,6 +1,11 @@
+/**
+ * VYRA Studio — recording countdown overlay.
+ */
+
 import { BrowserWindow, screen } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
+import { settings } from '../settings/settings.service'
 
 export function showCountdown(recordingScreenId?: string): Promise<void> {
   return new Promise((resolve) => {
@@ -38,6 +43,8 @@ export function showCountdown(recordingScreenId?: string): Promise<void> {
     } else {
       win.loadFile(join(__dirname, '../renderer/index.html'), { hash: '/countdown' })
     }
+
+    void settings // settings retained for future skip-countdown preference
 
     setTimeout(() => {
       if (!win.isDestroyed()) {

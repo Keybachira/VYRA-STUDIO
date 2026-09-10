@@ -1,77 +1,66 @@
-import { BrowserWindow, globalShortcut } from 'electron'
-import { currentState, shortcuts } from '../settings/settings.service'
-import { setWindowPosition } from '../window/window.service'
-export function registerGlobalShortcuts(win: BrowserWindow): void {
-  const register = (key: string, action: () => void): void => {
-    if (key) {
-      try {
-        globalShortcut.register(key, action)
-      } catch {
-        console.error('Failed to register shortcut:', key)
-      }
-    }
-  }
-  const handlePosition = (pos: string): void => {
-    if (currentState.sizeIndex >= 3) return
-    setWindowPosition(pos)
-  }
+/**
+ * VYRA Studio — shortcut engine (main process).
+ * Two layers:
+ *  - global: registered with Electron globalShortcut (work system-wide)
+ *  - local: forwarded to the focused camera window as keydown-equivalent actions
+ */
 
-  register(shortcuts.topLeft, () => handlePosition('top-left'))
-  register(shortcuts.topRight, () => handlePosition('top-right'))
-  register(shortcuts.leftMiddle, () => handlePosition('left-middle'))
-  register(shortcuts.center, () => handlePosition('center'))
-  register(shortcuts.rightMiddle, () => handlePosition('right-middle'))
-  register(shortcuts.bottomLeft, () => handlePosition('bottom-left'))
-  register(shortcuts.bottomRight, () => handlePosition('bottom-right'))
-  register(shortcuts.sizeSmall, () =>
-    win.webContents.send('tray-action', { type: 'set-size-index', payload: 0 })
-  )
-  register(shortcuts.sizeMedium, () =>
-    win.webContents.send('tray-action', { type: 'set-size-index', payload: 1 })
-  )
-  register(shortcuts.sizeLarge, () =>
-    win.webContents.send('tray-action', { type: 'set-size-index', payload: 2 })
-  )
-  register(shortcuts.sizeSidebar, () =>
-    win.webContents.send('tray-action', { type: 'set-size-index', payload: 3 })
-  )
-  register(shortcuts.sizeFullscreen, () =>
-    win.webContents.send('tray-action', { type: 'set-size-index', payload: 4 })
-  )
-  register(shortcuts.mirror, () =>
-    win.webContents.send('tray-action', { type: 'set-mirror', payload: !currentState.isMirrored })
-  )
-  register(shortcuts.alwaysOnTop, () =>
-    win.webContents.send('tray-action', {
-      type: 'set-always-on-top',
-      payload: !currentState.alwaysOnTop
-    })
-  )
-  register(shortcuts.shapeCircle, () =>
-    win.webContents.send('tray-action', { type: 'set-shape', payload: 'circle' })
-  )
-  register(shortcuts.shapeSquare, () =>
-    win.webContents.send('tray-action', { type: 'set-shape', payload: 'square' })
-  )
-  register(shortcuts.shapeVertical, () =>
-    win.webContents.send('tray-action', { type: 'set-shape', payload: 'vertical-rect' })
-  )
-  register(shortcuts.shapeHorizontal, () =>
-    win.webContents.send('tray-action', { type: 'set-shape', payload: 'horizontal-rect' })
-  )
+import { globalShortcut } from 'electron'
+import { settings } from '../settings/settings.service'
+import { SHORTCUT_DEFINITIONS } from '../../../shared/shortcuts'
+import type { ShortcutAction } from '../../../shared/types'
+
+export type ShortcutHandler = (action: ShortcutAction) => void
+
+let handler: ShortcutHandler = (): void => undefined
+
+export function setShortcutHandler(next: ShortcutHandler): void {
+  handler = next
 }
-export function unregisterGlobalShortcuts(): void {
-  const keysToUnregister = Object.entries(shortcuts)
-    .filter(([key]) => key !== 'toggleCamera' && key !== 'startRecording')
-    .map(([, value]) => value)
 
-  for (const key of keysToUnregister) {
-    if (key && typeof key === 'string') {
-      try {
-        globalShortcut.unregister(key)
-      } catch {
-        console.error('Failed to unregister shortcut:', key)
-      }
+export function registerGlobalShortcuts(): void {
+  for (const def of SHORTCUT_DEFINITIONS) {
+    if (!def.global) continue
+    const accelerator = settings.shortcuts[def.action]
+    if (!accelerator) continue
+    try {
+      globalShortcut.register(accelerator, () => handler(def.action))
+    } catch (err) {
+      console.warn(`[vyra] failed to register global shortcut ${accelerator}:`, err)
     }
   }
+}
+
+export function reRegisterGlobalShortcuts(): void {
+  globalShortcut.unregisterAll()
+  registerGlobalShortcuts()
+}
+
+export function unregisterFocusShortcuts(): void {
+  // Local (focus-scoped) shortcuts are handled in the renderer; nothing to do here.
+}
+
+/** Resolve a keydown in the camera window to an action, if it matches a local shortcut. */
+export function matchLocalShortcut(
+  event: { ctrlKey: boolean; altKey: boolean; shiftKey: boolean; metaKey: boolean; key: string },
+  shortcuts: Record<string, string>
+): ShortcutAction | null {
+  const parts: string[] = []
+  if (event.ctrlKey || event.metaKey) parts.push('CmdOrCtrl')
+  if (event.altKey) parts.push('Alt')
+  if (event.shiftKey) parts.push('Shift')
+  const key = event.key.length === 1 ? event.key.toLowerCase() : event.key
+  parts.push(key)
+  const combo = parts.join('+')
+
+  for (const def of SHORTCUT_DEFINITIONS) {
+    if (def.global) continue
+    if (shortcuts[def.action] === combo) return def.action
+  }
+  // Bare keys (e.g. "1".."5") compare directly
+  for (const def of SHORTCUT_DEFINITIONS) {
+    if (def.global) continue
+    if (shortcuts[def.action] === key) return def.action
+  }
+  return null
 }

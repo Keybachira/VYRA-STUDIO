@@ -1,10 +1,16 @@
+/**
+ * VYRA Studio — recording pipeline (main process).
+ * Consumes webm chunks from the hidden renderer worker and encodes with ffmpeg.
+ * Error classification preserved from the original working implementation.
+ */
+
 import { ipcMain, app, BrowserWindow } from 'electron'
 import ffmpeg from 'fluent-ffmpeg'
 import ffmpegStatic from 'ffmpeg-static'
 import path from 'path'
 import fs from 'fs'
 import { PassThrough } from 'stream'
-import { currentState } from '../settings/settings.service'
+import { settings } from '../settings/settings.service'
 
 let ffmpegPath = ffmpegStatic
 if (ffmpegPath && ffmpegPath.includes('app.asar')) {
@@ -16,7 +22,7 @@ if (ffmpegPath) {
 
 type FfmpegErrorCode = 'disk-full' | 'codec-unavailable' | 'permission-denied' | 'unknown'
 
-function classifyFfmpegError(stderr: string): FfmpegErrorCode {
+export function classifyFfmpegError(stderr: string): FfmpegErrorCode {
   const s = (stderr ?? '').toLowerCase()
   if (s.includes('no space left') || s.includes('not enough space') || s.includes('enospc')) {
     return 'disk-full'
@@ -39,7 +45,7 @@ export function getRecordingTargetFolder(): string {
   const fallback = app.getPath('videos')
   try {
     const configured =
-      typeof currentState.recordingFolder === 'string' ? currentState.recordingFolder : ''
+      typeof settings.recording.folder === 'string' ? settings.recording.folder : ''
     if (configured) {
       fs.mkdirSync(configured, { recursive: true })
       fs.accessSync(configured, fs.constants.W_OK)
@@ -47,7 +53,7 @@ export function getRecordingTargetFolder(): string {
     }
   } catch (err) {
     console.warn(
-      `Recording folder "${String(currentState.recordingFolder)}" is unavailable, falling back to "${fallback}":`,
+      `Recording folder "${String(settings.recording.folder)}" is unavailable, falling back to "${fallback}":`,
       err instanceof Error ? err.message : err
     )
   }
@@ -124,7 +130,7 @@ export function setupRecordingIPC(): void {
         systemAudioVolume?: number
         microphoneAudioVolume?: number
       } = {}
-    ) => {
+    ): boolean => {
       if (recordingStream || ffmpegProcess) {
         console.warn('recording-start ignored: a recording is already in progress')
         return false
@@ -141,7 +147,7 @@ export function setupRecordingIPC(): void {
         cleanup()
         return false
       }
-      const fileName = `Recording-${new Date().toISOString().replace(/:/g, '-')}.mov`
+      const fileName = `VYRA-${new Date().toISOString().replace(/:/g, '-')}.mov`
       const filePath = path.join(videosFolder, fileName)
       const tempPath = filePath + '.tmp'
 
@@ -182,11 +188,9 @@ export function setupRecordingIPC(): void {
         outputOptions.push('-quality speed')
       }
 
-      const finalVideoCodec = resolvedEncoder
-
       ffmpegProcess = ffmpeg(recordingStream)
         .inputFormat('webm')
-        .videoCodec(finalVideoCodec)
+        .videoCodec(resolvedEncoder)
         .outputOptions(outputOptions)
         .audioCodec('aac')
         .audioBitrate('192k')
@@ -234,11 +238,10 @@ export function setupRecordingIPC(): void {
     }
   })
 
-  ipcMain.handle('recording-stop', async () => {
+  ipcMain.handle('recording-stop', async (): Promise<RecordingResult> => {
     if (!recordingStream || !ffmpegProcess) {
       return { success: false, error: 'No recording in progress' }
     }
-
     return new Promise<RecordingResult>((resolve, reject) => {
       currentResolve = resolve
       currentReject = reject

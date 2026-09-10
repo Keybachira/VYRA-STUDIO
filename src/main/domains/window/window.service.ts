@@ -1,17 +1,27 @@
+/**
+ * VYRA Studio — window management (main process).
+ * Camera overlay (transparent, always-on-top), Settings, Command Palette,
+ * and the hidden Recording Worker window.
+ */
+
 import { is } from '@electron-toolkit/utils'
 import { app, BrowserWindow, screen, shell } from 'electron'
 import { join } from 'path'
 import winIcon from '../../../../build/icon.ico?asset'
-import icon from '../../../../resources/icon.png?asset'
 import { t } from '../../../shared/i18n'
-import { getIsCameraOn } from '../camera/camera.service'
-import { currentState, saveSettings } from '../settings/settings.service'
+import { getIsCameraOn, rememberCameraPosition } from '../camera/camera.service'
+import { settings } from '../settings/settings.service'
+
 let _settingsWindow: BrowserWindow | null = null
+let _paletteWindow: BrowserWindow | null = null
 let _recordingWorker: BrowserWindow | null = null
-let positionSaveTimer: ReturnType<typeof setTimeout> | null = null
 
 export function getSettingsWindow(): BrowserWindow | null {
   return _settingsWindow
+}
+
+export function getPaletteWindow(): BrowserWindow | null {
+  return _paletteWindow
 }
 
 export function getRecordingWorker(): BrowserWindow | null {
@@ -22,24 +32,31 @@ type WindowCallbacks = {
   onFocus: (win: BrowserWindow) => void
   onBlur: () => void
 }
-//Aquiles_Bachira
+
+function resolveAssetUrl(hash: string): { url: string; file: boolean } {
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    return { url: process.env['ELECTRON_RENDERER_URL'] + hash, file: false }
+  }
+  return { url: join(__dirname, '../renderer/index.html'), file: true }
+}
+
 export function createSettingsWindow(): void {
-  if (_settingsWindow) {
+  if (_settingsWindow && !_settingsWindow.isDestroyed()) {
     _settingsWindow.focus()
     return
   }
   const isMac = process.platform === 'darwin'
   const workArea = screen.getPrimaryDisplay().workAreaSize
-  const initWidth = Math.min(600, Math.max(360, workArea.width - 40))
-  const initHeight = Math.min(700, Math.max(500, workArea.height - 80))
+  const initWidth = Math.min(640, Math.max(360, workArea.width - 40))
+  const initHeight = Math.min(720, Math.max(500, workArea.height - 80))
   _settingsWindow = new BrowserWindow({
     width: initWidth,
     height: initHeight,
     minWidth: 360,
     minHeight: 500,
-    title: t('tray.preferences', currentState.language || 'en').replace('...', ''),
+    title: t('settings.title', settings.camera.language),
     transparent: isMac,
-    backgroundColor: isMac ? '#00000000' : '#0f0f0f',
+    backgroundColor: isMac ? '#00000000' : '#0A0B0D',
     resizable: true,
     maximizable: true,
     ...(isMac
@@ -47,7 +64,7 @@ export function createSettingsWindow(): void {
       : {
           icon: winIcon,
           titleBarStyle: 'hidden',
-          titleBarOverlay: { color: '#0f0f0f', symbolColor: '#ffffff', height: 36 }
+          titleBarOverlay: { color: '#0A0B0D', symbolColor: '#FFFFFF', height: 36 }
         }),
     autoHideMenuBar: true,
     webPreferences: {
@@ -57,19 +74,74 @@ export function createSettingsWindow(): void {
       devTools: false
     }
   })
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    _settingsWindow.loadURL(process.env['ELECTRON_RENDERER_URL'] + '#/settings')
+  const target = resolveAssetUrl('#/settings')
+  if (target.file) {
+    _settingsWindow.loadFile(target.url, { hash: '/settings' })
   } else {
-    _settingsWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: '/settings' })
+    _settingsWindow.loadURL(target.url)
   }
   _settingsWindow.on('closed', () => {
     _settingsWindow = null
   })
 }
 
-export function createRecordingWorker(): void {
-  if (_recordingWorker) return
+export function createPaletteWindow(): void {
+  if (_paletteWindow && !_paletteWindow.isDestroyed()) {
+    _paletteWindow.focus()
+    return
+  }
+  const display = screen.getPrimaryDisplay()
+  const width = 560
+  const height = 420
+  _paletteWindow = new BrowserWindow({
+    width,
+    height,
+    x: Math.round(display.workArea.x + (display.workArea.width - width) / 2),
+    y: Math.round(display.workArea.y + display.workArea.height * 0.22),
+    frame: false,
+    transparent: true,
+    hasShadow: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    show: false,
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: false,
+      devTools: false
+    }
+  })
+  _paletteWindow.setAlwaysOnTop(true, 'screen-saver')
+  const target = resolveAssetUrl('#/palette')
+  if (target.file) {
+    _paletteWindow.loadFile(target.url, { hash: '/palette' })
+  } else {
+    _paletteWindow.loadURL(target.url)
+  }
+  _paletteWindow.on('closed', () => {
+    _paletteWindow = null
+  })
+  _paletteWindow.once('ready-to-show', () => {
+    _paletteWindow?.show()
+    _paletteWindow?.focus()
+  })
+}
 
+export function togglePaletteWindow(): void {
+  if (_paletteWindow && !_paletteWindow.isDestroyed()) {
+    if (_paletteWindow.isVisible()) {
+      _paletteWindow.hide()
+      return
+    }
+    _paletteWindow.show()
+    _paletteWindow.focus()
+    return
+  }
+  createPaletteWindow()
+}
+
+export function createRecordingWorker(): void {
+  if (_recordingWorker && !_recordingWorker.isDestroyed()) return
   _recordingWorker = new BrowserWindow({
     show: false,
     webPreferences: {
@@ -80,201 +152,36 @@ export function createRecordingWorker(): void {
       devTools: false
     }
   })
-
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    _recordingWorker.loadURL(process.env['ELECTRON_RENDERER_URL'] + '#/worker')
+  const target = resolveAssetUrl('#/worker')
+  if (target.file) {
+    _recordingWorker.loadFile(target.url, { hash: '/worker' })
   } else {
-    _recordingWorker.loadFile(join(__dirname, '../renderer/index.html'), { hash: '/worker' })
+    _recordingWorker.loadURL(target.url)
   }
-
   _recordingWorker.on('closed', () => {
     _recordingWorker = null
   })
 }
-export function setWindowPosition(pos: string): void {
-  BrowserWindow.getAllWindows().forEach((win) => {
-    if (win !== _settingsWindow && win !== _recordingWorker) {
-      win.webContents.send('set-camera-position', pos)
-    }
-  })
-}
 
-//Aquiles_Bachira
-export function resizeWindow(sizeObj: {
-  width: number
-  height: number
-  position?: 'right' | 'fullscreen'
-}): void {
-  if (!_settingsWindow || _settingsWindow.isDestroyed()) return
-  const workArea = screen.getPrimaryDisplay().workAreaSize
-  const w = Math.min(Math.max(360, sizeObj.width), workArea.width)
-  const h = Math.min(Math.max(400, sizeObj.height), workArea.height)
-  _settingsWindow.setBounds({ width: w, height: h })
-  _settingsWindow.center()
-}
-
-//Aquiles_Bachira
-export function getCameraDimensions(): { width: number; height: number } {
-  const SIZES = [300, 450, 600]
-  const sizeIndex = (currentState.sizeIndex as number) ?? 0
-  const shape = (currentState.shape as string) ?? 'circle'
-  const borderWidth = (currentState.borderWidth as number) ?? 0
-  const hasBorder = sizeIndex !== 4 && (currentState.borderGradient as string) !== 'none'
-
+function buildCameraWindow(): BrowserWindow {
   const displays = screen.getAllDisplays()
-  const display =
-    displays.find((d) => d.id.toString() === currentState.cameraScreenId) ??
+  const selected =
+    displays.find((d) => d.id.toString() === settings.camera.cameraScreenId) ??
     screen.getPrimaryDisplay()
-  const workArea = display.workAreaSize
-  const maxW = Math.max(160, workArea.width * 0.92)
-  const maxH = Math.max(160, workArea.height * 0.88)
-  const clamp = (w: number, h: number): { w: number; h: number } => {
-    if (w <= maxW && h <= maxH) return { w, h }
-    const scale = Math.min(maxW / w, maxH / h)
-    return { w: Math.round(w * scale), h: Math.round(h * scale) }
-  }
+  const { bounds } = selected
 
-  if (sizeIndex === 4) {
-    return { width: display.workArea.width, height: display.workArea.height }
-  }
-  if (sizeIndex === 3) {
-    const pct = (currentState.sidebarWidthPercentage as number) ?? 35
-    const w = Math.round(workArea.width * (pct / 100))
-    const h = workArea.height
-    const c = clamp(w, h)
-    return { width: c.w, height: c.h }
-  }
-
-  const size = SIZES[sizeIndex] || 300
-  let w = size
-  let h = size
-  if (shape === 'vertical-rect') {
-    w = Math.round(size * (3 / 4))
-    h = size
-  } else if (shape === 'horizontal-rect') {
-    w = size
-    h = Math.round(size * (9 / 16))
-  }
-
-  const inner = clamp(w, h)
-  w = inner.w
-  h = inner.h
-
-  if (hasBorder) {
-    const totalW = w + borderWidth * 2
-    const totalH = h + borderWidth * 2
-    const totalClamped = clamp(totalW, totalH)
-    if (totalClamped.w !== totalW || totalClamped.h !== totalH) {
-      const inner2 = clamp(totalW - borderWidth * 2, totalH - borderWidth * 2)
-      w = Math.max(120, inner2.w)
-      h = Math.max(120, inner2.h)
-      return { width: w + borderWidth * 2, height: h + borderWidth * 2 }
-    }
-    w = totalW
-    h = totalH
-  }
-
-  return { width: w, height: h }
-}
-
-export function moveCameraWindow(x: number, y: number): void {
-  if (process.platform !== 'linux') return
-  BrowserWindow.getAllWindows().forEach((win) => {
-    if (win !== _settingsWindow && win !== _recordingWorker && !win.isDestroyed()) {
-      win.setPosition(Math.round(x), Math.round(y))
-    }
-  })
-}
-
-export function resizeCameraWindow(width: number, height: number, x?: number, y?: number): void {
-  if (process.platform !== 'linux') return
-  BrowserWindow.getAllWindows().forEach((win) => {
-    if (win !== _settingsWindow && win !== _recordingWorker && !win.isDestroyed()) {
-      const [curX, curY] = win.getPosition()
-      win.setBounds({
-        x: x ?? curX,
-        y: y ?? curY,
-        width: Math.round(width),
-        height: Math.round(height)
-      })
-    }
-  })
-}
-
-export function createWindow(callbacks: WindowCallbacks): void {
-  const displays = screen.getAllDisplays()
-  let selectedDisplay = displays.find((d) => d.id.toString() === currentState.cameraScreenId)
-  if (!selectedDisplay) selectedDisplay = screen.getPrimaryDisplay()
-
-  const { bounds } = selectedDisplay
-
-  if (process.platform === 'linux') {
-    const camDims = getCameraDimensions()
-    const startX = (currentState.x as number) ?? bounds.x
-    const startY = (currentState.y as number) ?? bounds.y
-
-    const mainWindow = new BrowserWindow({
-      width: camDims.width,
-      height: camDims.height,
-      x: startX,
-      y: startY,
-      show: false,
-      autoHideMenuBar: true,
-      alwaysOnTop: true,
-      frame: false,
-      transparent: true,
-      backgroundColor: '#00000000',
-      hasShadow: false,
-      resizable: false,
-      roundedCorners: false,
-      icon,
-      skipTaskbar: true,
-      webPreferences: {
-        preload: join(__dirname, '../preload/index.js'),
-        sandbox: false,
-        autoplayPolicy: 'no-user-gesture-required',
-        backgroundThrottling: false,
-        devTools: false
-      }
-    })
-    mainWindow.setAlwaysOnTop(true, 'screen-saver')
-    mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
-    mainWindow.on('ready-to-show', () => {
-      if (getIsCameraOn()) mainWindow.show()
-    })
-    mainWindow.on('focus', () => {
-      callbacks.onFocus(mainWindow)
-    })
-    mainWindow.on('blur', () => {
-      callbacks.onBlur()
-    })
-    mainWindow.on('moved', () => {
-      const [x, y] = mainWindow.getPosition()
-      currentState.x = x
-      currentState.y = y
-      if (positionSaveTimer) clearTimeout(positionSaveTimer)
-      positionSaveTimer = setTimeout(() => {
-        positionSaveTimer = null
-        saveSettings()
-      }, 300)
-    })
-    mainWindow.webContents.setWindowOpenHandler((details) => {
-      shell.openExternal(details.url)
-      return { action: 'deny' }
-    })
-    if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-      mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
-    } else {
-      mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
-    }
-    return
-  }
+  const isLinux = process.platform === 'linux'
+  const width = isLinux ? 300 : bounds.width
+  const height = isLinux ? 300 : bounds.height
+  const startX = isLinux ? (settings.camera.x ?? bounds.x) : bounds.x
+  const startY = isLinux ? (settings.camera.y ?? bounds.y) : bounds.y
 
   const mainWindow = new BrowserWindow({
-    width: bounds.width,
-    height: bounds.height,
-    x: bounds.x,
-    y: bounds.y,
+    width,
+    height,
+    x: startX,
+    y: startY,
+    title: 'VYRA Camera',
     useContentSize: true,
     show: false,
     autoHideMenuBar: true,
@@ -286,6 +193,7 @@ export function createWindow(callbacks: WindowCallbacks): void {
     resizable: false,
     roundedCorners: false,
     ...(process.platform === 'win32' ? { icon: winIcon } : {}),
+    skipTaskbar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -294,69 +202,45 @@ export function createWindow(callbacks: WindowCallbacks): void {
       devTools: false
     }
   })
-  mainWindow.setIgnoreMouseEvents(true, { forward: true })
   mainWindow.setAlwaysOnTop(true, 'screen-saver')
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  if (!isLinux) {
+    mainWindow.setIgnoreMouseEvents(true, { forward: true })
+  }
   mainWindow.on('ready-to-show', () => {
     if (getIsCameraOn()) mainWindow.show()
   })
   mainWindow.on('focus', () => {
-    if (process.platform === 'darwin') app.focus({ steal: true })
-    callbacks.onFocus(mainWindow)
+    if (process.platform === 'darwin') app?.focus?.({ steal: true })
+    callbacksRef.onFocus(mainWindow)
   })
   mainWindow.on('blur', () => {
-    callbacks.onBlur()
+    callbacksRef.onBlur()
   })
   mainWindow.on('moved', () => {
     const [x, y] = mainWindow.getPosition()
-    currentState.x = x
-    currentState.y = y
-    if (positionSaveTimer) clearTimeout(positionSaveTimer)
-    positionSaveTimer = setTimeout(() => {
-      positionSaveTimer = null
-      saveSettings()
-    }, 300)
+    rememberCameraPosition(x, y)
   })
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }
   })
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+  const target = resolveAssetUrl('')
+  if (target.file) {
+    mainWindow.loadFile(target.url)
   } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    mainWindow.loadURL(target.url)
   }
+  return mainWindow
 }
 
-export function moveCameraToScreen(screenId: string): void {
-  const displays = screen.getAllDisplays()
-  let selectedDisplay = displays.find((d) => d.id.toString() === screenId)
-  if (!selectedDisplay) selectedDisplay = screen.getPrimaryDisplay()
+const callbacksRef: WindowCallbacks = {
+  onFocus: (): void => undefined,
+  onBlur: (): void => undefined
+}
 
-  const { bounds } = selectedDisplay
-
-  BrowserWindow.getAllWindows().forEach((win) => {
-    if (win !== _settingsWindow && win !== _recordingWorker && !win.isDestroyed()) {
-      if (process.platform === 'linux') {
-        const camDims = getCameraDimensions()
-        win.setBounds({
-          x: bounds.x,
-          y: bounds.y,
-          width: camDims.width,
-          height: camDims.height
-        })
-      } else {
-        win.setBounds({
-          x: bounds.x,
-          y: bounds.y,
-          width: bounds.width,
-          height: bounds.height
-        })
-      }
-      win.webContents.send('screen-changed', {
-        width: bounds.width,
-        height: bounds.height
-      })
-    }
-  })
+export function createWindow(callbacks: WindowCallbacks): void {
+  callbacksRef.onFocus = callbacks.onFocus
+  callbacksRef.onBlur = callbacks.onBlur
+  buildCameraWindow()
 }
