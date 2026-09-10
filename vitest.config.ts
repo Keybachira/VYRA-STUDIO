@@ -6,7 +6,7 @@ export default defineConfig({
       {
         test: {
           name: 'node',
-          include: ['src/main/**/*.test.ts'],
+          include: ['src/main/**/*.test.ts', 'src/shared/**/*.test.ts'],
           environment: 'node',
           globals: true
         }
@@ -23,7 +23,7 @@ export default defineConfig({
     ],
     coverage: {
       provider: 'v8',
-      include: ['src/main/domains/**', 'src/renderer/src/domains/**'],
+      include: ['src/main/domains/**', 'src/shared/**', 'src/renderer/src/domains/**'],
       reporter: ['text', 'html']
     }
   }

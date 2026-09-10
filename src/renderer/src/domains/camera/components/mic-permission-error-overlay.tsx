@@ -121,39 +121,53 @@ export function MicPermissionErrorOverlay({
       <style>{`.perm-overlay::-webkit-scrollbar{display:none} @media (max-width: 380px){.perm-actions{flex-direction:column !important;width:100%}.perm-actions button{width:100%}} @media (max-height: 420px){.perm-overlay{padding-top:12px !important;justify-content:flex-start !important}}`}</style>
       <div style={styles.overlay} className="perm-overlay">
         <div style={styles.iconWrap}>
-          <Mic size={44} color="#ff9f0a" style={{ width: 'clamp(28px, 8vw, 44px)', height: 'clamp(28px, 8vw, 44px)' }} />
+          <Mic
+            size={44}
+            color="#ff9f0a"
+            style={{ width: 'clamp(28px, 8vw, 44px)', height: 'clamp(28px, 8vw, 44px)' }}
+          />
         </div>
         <h2 style={styles.title}>{t('mic.error.title', lang)}</h2>
         <p style={styles.message}>{t('mic.error.message', lang)}</p>
         <p style={styles.instructions}>{getInstructions()}</p>
 
-        <div className="perm-actions" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center', maxWidth: '90%', width: 'auto' }}>
-        {(platform === 'mac' || platform === 'win') && (
+        <div
+          className="perm-actions"
+          style={{
+            display: 'flex',
+            gap: '8px',
+            flexWrap: 'wrap',
+            justifyContent: 'center',
+            maxWidth: '90%',
+            width: 'auto'
+          }}
+        >
+          {(platform === 'mac' || platform === 'win') && (
+            <button
+              onClick={() =>
+                window.electron?.ipcRenderer.invoke('open-system-settings', 'microphone')
+              }
+              style={styles.retryButton}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 159, 10, 0.35)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255, 159, 10, 0.2)')}
+            >
+              {t('mic.error.openSettings', lang)}
+            </button>
+          )}
           <button
-            onClick={() =>
-              window.electron?.ipcRenderer.invoke('open-system-settings', 'microphone')
-            }
+            onClick={handleRetry}
             style={styles.retryButton}
             onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 159, 10, 0.35)')}
             onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255, 159, 10, 0.2)')}
           >
-            {t('mic.error.openSettings', lang)}
+            {t('mic.error.tryAgain', lang)}
           </button>
-        )}
-        <button
-          onClick={handleRetry}
-          style={styles.retryButton}
-          onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 159, 10, 0.35)')}
-          onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255, 159, 10, 0.2)')}
-        >
-          {t('mic.error.tryAgain', lang)}
-        </button>
-      </div>
+        </div>
 
-      {microphonePermission === 'denied' && (
-        <div style={styles.deniedStatus}>{t('mic.status.denied', lang)}</div>
-      )}
-    </div>
+        {microphonePermission === 'denied' && (
+          <div style={styles.deniedStatus}>{t('mic.status.denied', lang)}</div>
+        )}
+      </div>
     </>
   )
 }

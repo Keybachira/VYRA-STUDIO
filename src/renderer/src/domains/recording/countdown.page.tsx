@@ -8,7 +8,6 @@ export function CountdownPage(): React.JSX.Element {
     const timer = setInterval(() => {
       setCountdown((prev) => prev - 1)
     }, 1000)
-
     return () => clearInterval(timer)
   }, [])
 
@@ -39,9 +38,10 @@ export function CountdownPage(): React.JSX.Element {
         <span
           key={countdown}
           style={{
-            color: '#ffffff',
+            color: '#FFDB00',
             fontSize: '162px',
-            fontWeight: 'bold',
+            fontWeight: 700,
+            textShadow: '0 4px 32px rgba(255, 219, 0, 0.35)',
             animation: 'pulseFade 1s ease-in-out forwards'
           }}
         >

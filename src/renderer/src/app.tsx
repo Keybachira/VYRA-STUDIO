@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react'
 import { CameraPage } from './domains/camera/camera.page'
 import { SettingsPage } from './domains/settings/settings.page'
 import { CountdownPage } from './domains/recording/countdown.page'
-import { RecordingWorkerPage } from './domains/camera/recording-worker.page'
+import { RecordingWorkerPage } from './domains/recording/recording-worker.page'
+import { CommandPalettePage } from './domains/palette/command-palette.page'
 
 function App(): React.JSX.Element {
   const [route, setRoute] = useState<string>('')
@@ -22,6 +23,9 @@ function App(): React.JSX.Element {
   }
   if (route === '#/worker') {
     return <RecordingWorkerPage />
+  }
+  if (route === '#/palette') {
+    return <CommandPalettePage />
   }
   return <CameraPage />
 }

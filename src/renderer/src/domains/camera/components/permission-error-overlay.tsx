@@ -119,37 +119,51 @@ export function PermissionErrorOverlay({
       <style>{`.perm-overlay::-webkit-scrollbar{display:none} @media (max-width: 380px){.perm-actions{flex-direction:column !important;width:100%}.perm-actions button{width:100%}} @media (max-height: 420px){.perm-overlay{padding-top:12px !important;justify-content:flex-start !important}}`}</style>
       <div style={styles.overlay} className="perm-overlay">
         <div style={styles.iconWrap}>
-          <CameraOff size={44} color="#ff6961" style={{ width: 'clamp(28px, 8vw, 44px)', height: 'clamp(28px, 8vw, 44px)' }} />
+          <CameraOff
+            size={44}
+            color="#ff6961"
+            style={{ width: 'clamp(28px, 8vw, 44px)', height: 'clamp(28px, 8vw, 44px)' }}
+          />
         </div>
         <h2 style={styles.title}>{t('camera.error.title', lang)}</h2>
         <p style={styles.message}>{t('camera.error.message', lang)}</p>
         <p style={styles.instructions}>{getInstructions()}</p>
 
-        <div className="perm-actions" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center', maxWidth: '90%', width: 'auto' }}>
-        {(platform === 'mac' || platform === 'win') && (
+        <div
+          className="perm-actions"
+          style={{
+            display: 'flex',
+            gap: '8px',
+            flexWrap: 'wrap',
+            justifyContent: 'center',
+            maxWidth: '90%',
+            width: 'auto'
+          }}
+        >
+          {(platform === 'mac' || platform === 'win') && (
+            <button
+              onClick={() => window.electron?.ipcRenderer.invoke('open-system-settings', 'camera')}
+              style={styles.retryButton}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)')}
+            >
+              {t('camera.error.openSettings', lang)}
+            </button>
+          )}
           <button
-            onClick={() => window.electron?.ipcRenderer.invoke('open-system-settings', 'camera')}
+            onClick={handleRetry}
             style={styles.retryButton}
             onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)')}
             onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)')}
           >
-            {t('camera.error.openSettings', lang)}
+            {t('camera.error.tryAgain', lang)}
           </button>
-        )}
-        <button
-          onClick={handleRetry}
-          style={styles.retryButton}
-          onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)')}
-          onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)')}
-        >
-          {t('camera.error.tryAgain', lang)}
-        </button>
-      </div>
+        </div>
 
-      {cameraPermission === 'denied' && (
-        <div style={styles.deniedStatus}>{t('camera.status.denied', lang)}</div>
-      )}
-    </div>
+        {cameraPermission === 'denied' && (
+          <div style={styles.deniedStatus}>{t('camera.status.denied', lang)}</div>
+        )}
+      </div>
     </>
   )
 }

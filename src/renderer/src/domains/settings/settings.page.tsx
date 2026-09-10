@@ -1,94 +1,79 @@
+/**
+ * VYRA Studio — Settings.
+ * Categories: General, Camera, Appearance, Recording, Audio, Shortcuts,
+ * Presets, Advanced. Compact, keyboard-friendly, no dashboard clutter.
+ */
+
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import {
+  Camera,
   Clapperboard,
+  FolderOpen,
+  Info,
   Keyboard,
+  LayoutTemplate,
+  Mic,
+  Monitor,
+  Palette,
   RotateCcw,
-  ArrowUpLeft,
-  ArrowUpRight,
-  ArrowLeft,
-  Target,
-  ArrowRight,
-  ArrowDownLeft,
-  ArrowDownRight,
-  PowerOff,
-  FlipHorizontal,
-  Pin,
-  TriangleAlert,
-  FolderOpen
+  Settings as SettingsIcon,
+  Sparkles
 } from 'lucide-react'
-import React, { useState } from 'react'
-import { GRADIENTS, GradientKey } from '../../../../shared/colors'
 import { t } from '../../../../shared/i18n'
-import { useShortcuts, VisualState } from './hooks/use-shortcuts'
+import { GRADIENTS } from '../../../../shared/colors'
+import { SHORTCUT_DEFINITIONS } from '../../../../shared/shortcuts'
+import type {
+  AppSettings,
+  BorderConfig,
+  CameraPreset,
+  CameraShape,
+  CameraSize,
+  ShortcutAction
+} from '../../../../shared/types'
+import { useCameraStore } from '../../stores/camera.store'
 import { useAudioDevices } from '../camera/hooks/use-audio-devices'
 import { useAudioMeter } from './hooks/use-audio-meter'
-import {
-  getMacOSVirtualAudioStream,
-  getLinuxSystemAudioStream,
-  isLinuxPlatform
-} from '../camera/hooks/use-screen-recorder'
+import { Toggle } from './components/toggle'
+import { PillGroup } from './components/pill-group'
+import { SliderRow } from './components/slider-row'
 
-const SHAPE_KEYS = [
-  {
-    key: 'circle',
-    i18nKey: 'settings.shape.circle',
-    svg: (
-      <svg viewBox="0 0 40 40" width={36} height={36}>
-        <circle cx="20" cy="20" r="18" />
-      </svg>
-    )
-  },
-  {
-    key: 'square',
-    i18nKey: 'settings.shape.square',
-    svg: (
-      <svg viewBox="0 0 40 40" width={36} height={36}>
-        <rect x="3" y="3" width="34" height="34" rx="6" />
-      </svg>
-    )
-  },
-  {
-    key: 'vertical-rect',
-    i18nKey: 'settings.shape.portrait',
-    svg: (
-      <svg viewBox="0 0 40 40" width={36} height={36}>
-        <rect x="9" y="2" width="22" height="36" rx="5" />
-      </svg>
-    )
-  },
-  {
-    key: 'horizontal-rect',
-    i18nKey: 'settings.shape.landscape',
-    svg: (
-      <svg viewBox="0 0 40 40" width={36} height={36}>
-        <rect x="2" y="11" width="36" height="18" rx="5" />
-      </svg>
-    )
-  }
+type Tab =
+  'general' | 'camera' | 'appearance' | 'recording' | 'audio' | 'shortcuts' | 'presets' | 'advanced'
+
+const TABS: { key: Tab; icon: React.ReactNode; labelKey: string }[] = [
+  { key: 'general', icon: <SettingsIcon size={14} />, labelKey: 'settings.tab.general' },
+  { key: 'camera', icon: <Camera size={14} />, labelKey: 'settings.tab.camera' },
+  { key: 'appearance', icon: <Palette size={14} />, labelKey: 'settings.tab.appearance' },
+  { key: 'recording', icon: <Clapperboard size={14} />, labelKey: 'settings.tab.recording' },
+  { key: 'audio', icon: <Mic size={14} />, labelKey: 'settings.tab.audio' },
+  { key: 'shortcuts', icon: <Keyboard size={14} />, labelKey: 'settings.tab.shortcuts' },
+  { key: 'presets', icon: <LayoutTemplate size={14} />, labelKey: 'settings.tab.presets' },
+  { key: 'advanced', icon: <Info size={14} />, labelKey: 'settings.tab.advanced' }
 ]
 
-const GRADIENT_ENTRIES = Object.entries(GRADIENTS).filter(([k]) => k !== 'none') as [
-  GradientKey,
-  string
-][]
+const SHAPES: CameraShape[] = [
+  'circle',
+  'rounded-rect',
+  'square',
+  'pill',
+  'rect',
+  'vertical-rect',
+  'horizontal-rect'
+]
+const SIZES: CameraSize[] = ['xs', 'sm', 'md', 'lg', 'sidebar', 'fullscreen']
+const POSITIONS = [
+  'top-left',
+  'top-center',
+  'top-right',
+  'center-left',
+  'center',
+  'center-right',
+  'bottom-left',
+  'bottom-center',
+  'bottom-right'
+] as const
 
-const PRESET_ANGLES = [0, 45, 90, 135]
-
-function roundingToSlider(rounding: number): number {
-  return rounding >= 9999 ? 100 : Math.min(rounding, 99)
-}
-
-function sliderToRounding(val: number): number {
-  return val >= 100 ? 9999 : val
-}
-
-function isLinearGradient(val: string): boolean {
-  return val.startsWith('linear-gradient')
-}
-
-const RESOLUTIONS = ['720p', '1080p', '1440p', '2160p'] as const
-const FPS_OPTIONS = ['30', '60'] as const
-
-function getEncoderOptions(): { value: string; labelKey: string }[] {
+function encoderOptions(): { value: string; labelKey: string }[] {
   const options = [{ value: 'libx264', labelKey: 'settings.encoder.cpu' }]
   const ua = navigator.userAgent
   if (ua.indexOf('Mac') !== -1) {
@@ -103,1028 +88,696 @@ function getEncoderOptions(): { value: string; labelKey: string }[] {
   return options
 }
 
-type RecordingSettingsProps = {
-  language: 'en' | 'pt'
-  visualState: VisualState
-  updateVisualState: (key: keyof VisualState, value: string | number | boolean) => void
-}
+export function SettingsPage(): React.JSX.Element {
+  const [activeTab, setActiveTab] = useState<Tab>('general')
+  const [snapshot, setSnapshot] = useState<AppSettings | null>(null)
+  const [presets, setPresets] = useState<CameraPreset[]>([])
 
-function RecordingSettings({
-  language,
-  visualState,
-  updateVisualState
-}: RecordingSettingsProps): React.JSX.Element {
-  const { devices } = useAudioDevices()
-  const encoderOptions = getEncoderOptions()
-
-  const [micStream, setMicStream] = React.useState<MediaStream | null>(null)
-  const [sysStream, setSysStream] = React.useState<MediaStream | null>(null)
-
-  React.useEffect(() => {
-    let active = true
-    let currentStream: MediaStream | null = null
-    const getMic = async (): Promise<void> => {
-      try {
-        const constraints =
-          visualState.selectedMicrophoneId && visualState.selectedMicrophoneId !== 'default'
-            ? { deviceId: { exact: visualState.selectedMicrophoneId } }
-            : true
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio:
-            typeof constraints === 'boolean'
-              ? constraints
-              : { ...constraints, echoCancellation: false, noiseSuppression: false }
+  useEffect(() => {
+    void window.vyra
+      ?.getInitialState()
+      .then((state) => {
+        setSnapshot(state as unknown as AppSettings)
+        const cam = (state as unknown as { camera?: Record<string, unknown> }).camera ?? {}
+        useCameraStore.getState().patch({
+          ...(cam.shape !== undefined ? { shape: cam.shape as CameraShape } : {}),
+          ...(cam.size !== undefined ? { size: cam.size as CameraSize } : {}),
+          ...(cam.isMirrored !== undefined ? { isMirrored: cam.isMirrored as boolean } : {}),
+          ...(cam.rounding !== undefined ? { rounding: cam.rounding as number } : {}),
+          ...(cam.opacity !== undefined ? { opacity: cam.opacity as number } : {}),
+          ...(cam.border !== undefined ? { border: cam.border as BorderConfig } : {}),
+          ...(cam.language !== undefined ? { language: cam.language as 'en' | 'pt' } : {}),
+          ...(cam.alwaysOnTop !== undefined ? { alwaysOnTop: cam.alwaysOnTop as boolean } : {})
         })
-        if (!active) {
-          stream.getTracks().forEach((t) => t.stop())
-        } else {
-          currentStream = stream
-          setMicStream(stream)
-        }
-      } catch (e) {
-        console.warn('Meter mic error:', e)
-      }
-    }
-    getMic()
-    return () => {
-      active = false
-      if (currentStream) currentStream.getTracks().forEach((t) => t.stop())
-    }
-  }, [visualState.selectedMicrophoneId])
-
-  React.useEffect(() => {
-    let active = true
-    let currentStream: MediaStream | null = null
-    const getSys = async (): Promise<void> => {
-      let stream: MediaStream | null = null
-      if (isLinuxPlatform()) {
-        stream = await getLinuxSystemAudioStream()
-      } else if (navigator.userAgent.indexOf('Mac') !== -1) {
-        stream = await getMacOSVirtualAudioStream()
-      }
-      if (!active && stream) {
-        stream.getTracks().forEach((t) => t.stop())
-      } else if (stream) {
-        currentStream = stream
-        setSysStream(stream)
-      }
-    }
-    getSys()
-    return () => {
-      active = false
-      if (currentStream) currentStream.getTracks().forEach((t) => t.stop())
-    }
+      })
+      .catch((err) => console.error('[vyra] settings load failed:', err))
+    void window.vyra?.getPresets().then(setPresets)
   }, [])
 
-  const micLevel = useAudioMeter(micStream)
-  const sysLevel = useAudioMeter(sysStream)
+  const language = snapshot?.camera?.language ?? 'en'
 
-  const isWindows = navigator.userAgent.indexOf('Win') !== -1
+  const refreshPresets = useCallback((): void => {
+    void window.vyra?.getPresets().then(setPresets)
+  }, [])
 
-  const renderMeter = (level: number, disabled?: boolean): React.JSX.Element => (
-    <div
-      style={{
-        height: '6px',
-        background: 'rgba(255,255,255,0.1)',
-        borderRadius: '3px',
-        marginTop: '16px',
-        overflow: 'hidden'
-      }}
-    >
-      <div
-        style={{
-          width: disabled ? '0%' : `${level}%`,
-          height: '100%',
-          background: level > 85 ? '#ef4444' : level > 60 ? '#eab308' : '#22c55e',
-          transition: 'width 0.1s ease-out, background 0.1s ease-out'
-        }}
-      />
-    </div>
-  )
+  const commitCamera = useCallback((patch: Record<string, unknown>): void => {
+    useCameraStore.getState().patch(patch as never)
+    window.vyra?.updateCamera(patch)
+  }, [])
+
+  const tab = activeTab
 
   return (
-    <div className="settings-section">
-      <div className="settings-list">
-        {/* Aquiles_Bachira */}
-        <div className="recording-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-          <div className="settings-row settings-row--column">
-            <span className="settings-label">{t('settings.recordingResolution', language)}</span>
-            <div className="option-pills">
-              {RESOLUTIONS.map((r) => (
-                <button
-                  key={r}
-                  className={`option-pill ${visualState.recordingResolution === r ? 'option-pill--active' : ''}`}
-                  onClick={() => updateVisualState('recordingResolution', r)}
-                >
-                  {t(`settings.recording.${r}`, language)}
-                </button>
-              ))}
-            </div>
-          </div>
+    <div className="vyra-surface vyra-scroll settings-container">
+      <style>{`
+        .settings-container { width: 100%; height: 100%; overflow-y: auto; padding: 0 24px 20px; display: flex; flex-direction: column; }
+        html[data-platform='darwin'] .settings-header { padding-top: 44px; }
+        html[data-platform='win32'] .settings-header { padding-right: 140px; }
+        .settings-header { -webkit-app-region: drag; cursor: default; user-select: none; padding-top: 16px; }
+        .settings-header button, .settings-header input { -webkit-app-region: no-drag; }
+      `}</style>
 
-          <div className="settings-row settings-row--column">
-            <span className="settings-label">{t('settings.recordingFps', language)}</span>
-            <div className="option-pills" style={{ flexDirection: 'column' }}>
-              {FPS_OPTIONS.map((f) => (
-                <button
-                  key={f}
-                  className={`option-pill ${visualState.recordingFps === f ? 'option-pill--active' : ''}`}
-                  onClick={() => updateVisualState('recordingFps', f)}
-                >
-                  {t(`settings.recording.${f}fps`, language)}
-                </button>
-              ))}
-            </div>
-          </div>
+      <div className="settings-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <img
+            src="../../../assets/vyra-mark.svg"
+            alt=""
+            width={26}
+            height={26}
+            onError={(e) => {
+              e.currentTarget.style.display = 'none'
+            }}
+          />
+          <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0, letterSpacing: '-0.3px' }}>
+            {t('settings.title', language)}
+          </h1>
+          <span style={{ fontSize: 11, color: 'var(--color-faint)', marginTop: 2 }}>
+            {t('app.tagline', language)}
+          </span>
         </div>
+      </div>
 
-        <div className="settings-row settings-row--column">
-          <span className="settings-label">{t('settings.recordingEncoder', language)}</span>
-          <div className="option-pills">
-            {encoderOptions.map((enc) => (
-              <button
-                key={enc.value}
-                className={`option-pill ${visualState.recordingEncoder === enc.value ? 'option-pill--active' : ''}`}
-                onClick={() => updateVisualState('recordingEncoder', enc.value)}
-              >
-                {t(enc.labelKey, language)}
-              </button>
-            ))}
-          </div>
-        </div>
+      <div style={{ display: 'flex', gap: 4, margin: '12px 0 18px', flexWrap: 'wrap' }}>
+        {TABS.map(({ key, icon, labelKey }) => (
+          <button
+            key={key}
+            className={`vyra-pill ${tab === key ? 'vyra-pill--active' : ''}`}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            onClick={() => setActiveTab(key)}
+          >
+            {icon}
+            {t(labelKey, language)}
+          </button>
+        ))}
+      </div>
 
-        <div className="settings-row settings-row--column">
-          <span className="settings-label">{t('settings.recordingAudio', language)}</span>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%' }}>
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                background: 'rgba(0, 0, 0, 0.2)',
-                padding: '14px',
-                borderRadius: '10px',
-                width: '100%',
-                gap: '16px'
-              }}
-            >
-              <div>
-                <span
-                  className="settings-label"
-                  style={{
-                    fontSize: '13px',
-                    color: 'rgba(255,255,255,0.7)',
-                    display: 'block',
-                    marginBottom: '8px'
-                  }}
-                >
-                  {t('settings.recordingMicrophone', language)}
-                </span>
-                <select
-                  className="settings-select"
-                  value={visualState.selectedMicrophoneId}
-                  onChange={(e) => updateVisualState('selectedMicrophoneId', e.target.value)}
-                  style={{ width: '100%', margin: 0 }}
-                >
-                  <option value="default">
-                    {t('settings.recordingMicrophoneDefault', language)}
-                  </option>
-                  {devices.map((d) => (
-                    <option key={d.deviceId} value={d.deviceId}>
-                      {d.label || d.deviceId.substring(0, 8)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <div className="rounding-header">
-                  <span
-                    className="settings-label"
-                    style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)' }}
-                  >
-                    {t('settings.recordingMicAudio', language)}
-                  </span>
-                  <span className="rounding-value">{visualState.microphoneAudioVolume}%</span>
-                </div>
-                <div className="slider-wrap" style={{ marginTop: '4px' }}>
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    step={1}
-                    value={visualState.microphoneAudioVolume}
-                    className="rounding-slider"
-                    onChange={(e) =>
-                      updateVisualState('microphoneAudioVolume', Number(e.target.value))
-                    }
-                  />
-                  {renderMeter(micLevel)}
-                </div>
-              </div>
-            </div>
-
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                background: 'rgba(0, 0, 0, 0.2)',
-                padding: '14px',
-                borderRadius: '10px',
-                width: '100%'
-              }}
-            >
-              <div className="rounding-header">
-                <span
-                  className="settings-label"
-                  style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)' }}
-                >
-                  {t('settings.recordingSystemAudio', language)}
-                </span>
-                <span className="rounding-value">{visualState.systemAudioVolume}%</span>
-              </div>
-              <div className="slider-wrap" style={{ marginTop: '4px' }}>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  step={1}
-                  value={visualState.systemAudioVolume}
-                  className="rounding-slider"
-                  onChange={(e) => updateVisualState('systemAudioVolume', Number(e.target.value))}
-                />
-                {isWindows ? (
-                  <div
-                    style={{
-                      fontSize: '10px',
-                      color: 'rgba(255,255,255,0.4)',
-                      marginTop: '6px',
-                      textAlign: 'center'
-                    }}
-                  >
-                    {t('settings.recordingSystemAudioWindowsWarning', language) ||
-                      (language === 'pt'
-                        ? 'Medidor indisponível no Windows antes de gravar.'
-                        : 'Meter unavailable on Windows before recording.')}
-                  </div>
-                ) : (
-                  renderMeter(sysLevel)
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="settings-row settings-row--column">
-          <span className="settings-label">{t('settings.recordingFolder', language)}</span>
-          <div className="settings-folder-row">
-            <span className="settings-folder-path" title={visualState.recordingFolder}>
-              {visualState.recordingFolder || t('settings.recordingFolderDefault', language)}
-            </span>
-            <div className="settings-folder-actions">
-              <button
-                className="option-pill"
-                onClick={async () => {
-                  const ipc = window.electron?.ipcRenderer
-                  if (!ipc) return
-                  const folder = await ipc.invoke('choose-recording-folder')
-                  if (folder) updateVisualState('recordingFolder', folder)
-                }}
-              >
-                <FolderOpen size={14} style={{ verticalAlign: '-2px', marginRight: '6px' }} />
-                {t('settings.recordingFolderChoose', language)}
-              </button>
-              {visualState.recordingFolder && (
-                <button
-                  className="option-pill"
-                  title={t('settings.recordingFolderDefault', language)}
-                  onClick={() => updateVisualState('recordingFolder', '')}
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {tab === 'general' && <GeneralTab language={language} commitCamera={commitCamera} />}
+        {tab === 'camera' && <CameraTab language={language} commitCamera={commitCamera} />}
+        {tab === 'appearance' && <AppearanceTab language={language} commitCamera={commitCamera} />}
+        {tab === 'recording' && <RecordingTab language={language} />}
+        {tab === 'audio' && <AudioTab language={language} />}
+        {tab === 'shortcuts' && <ShortcutsTab language={language} />}
+        {tab === 'presets' && (
+          <PresetsTab language={language} presets={presets} refresh={refreshPresets} />
+        )}
+        {tab === 'advanced' && <AdvancedTab language={language} />}
       </div>
     </div>
   )
 }
 
-function parseCustomGradient(grad: string): { color1: string; color2: string; angle: number } {
-  const match = grad.match(/linear-gradient\((\d+)deg,\s*([^,]+),\s*([^)]+)\)/)
-  if (match) {
-    return { angle: Number(match[1]), color1: match[2].trim(), color2: match[3].trim() }
-  }
-  return { angle: 45, color1: '#ff6b6b', color2: '#7c3aed' }
-}
+// ── Tabs ────────────────────────────────────────────────────────────────────
 
-export function SettingsPage(): React.JSX.Element {
-  const {
-    shortcuts,
-    listeningKey,
-    setListeningKey,
-    resetSettings,
-    formatMacShortcut,
-    language,
-    visualState,
-    updateVisualState
-  } = useShortcuts()
-  const [activeTab, setActiveTab] = useState<
-    'visuals' | 'positioning' | 'cameraControl' | 'sizing' | 'recording'
-  >('visuals')
-
-  const [showGradientEditor, setShowGradientEditor] = useState(false)
-  const [gradColor1, setGradColor1] = useState('#ff6b6b')
-  const [gradColor2, setGradColor2] = useState('#7c3aed')
-  const [gradAngle, setGradAngle] = useState(45)
-
-  const customGradientValue = `linear-gradient(${gradAngle}deg, ${gradColor1}, ${gradColor2})`
-
-  const isCustom = isLinearGradient(visualState.borderGradient)
-
-  React.useEffect(() => {
-    if (showGradientEditor) {
-      updateVisualState('borderGradient', customGradientValue)
-    }
-  }, [
-    gradColor1,
-    gradColor2,
-    gradAngle,
-    showGradientEditor,
-    customGradientValue,
-    updateVisualState
-  ])
-
-  const handleOpenGradientEditor = (): void => {
-    if (isCustom) {
-      const parsed = parseCustomGradient(visualState.borderGradient)
-      setGradColor1(parsed.color1)
-      setGradColor2(parsed.color2)
-      setGradAngle(parsed.angle)
-    }
-    setShowGradientEditor((v) => !v)
-  }
-
-  const roundingTicks = [
-    { val: 0, i18nKey: 'settings.rounding.sharp' },
-    { val: 12, i18nKey: 'settings.rounding.subtle' },
-    { val: 24, i18nKey: 'settings.rounding.round' },
-    { val: 100, i18nKey: 'settings.rounding.max' }
-  ]
-
-  const sections = [
-    {
-      key: 'positioning',
-      title: t('settings.positioning', language),
-      actions: [
-        { key: 'topLeft', label: t('settings.topLeft', language), icon: <ArrowUpLeft size={16} /> },
-        {
-          key: 'topRight',
-          label: t('settings.topRight', language),
-          icon: <ArrowUpRight size={16} />
-        },
-        {
-          key: 'leftMiddle',
-          label: t('settings.leftMiddle', language),
-          icon: <ArrowLeft size={16} />
-        },
-        { key: 'center', label: t('settings.center', language), icon: <Target size={16} /> },
-        {
-          key: 'rightMiddle',
-          label: t('settings.rightMiddle', language),
-          icon: <ArrowRight size={16} />
-        },
-        {
-          key: 'bottomLeft',
-          label: t('settings.bottomLeft', language),
-          icon: <ArrowDownLeft size={16} />
-        },
-        {
-          key: 'bottomRight',
-          label: t('settings.bottomRight', language),
-          icon: <ArrowDownRight size={16} />
-        }
-      ]
-    },
-    {
-      key: 'cameraControl',
-      title: t('settings.cameraControl', language),
-      actions: [
-        {
-          key: 'mirror',
-          label: t('settings.mirror', language),
-          icon: <FlipHorizontal size={16} />
-        },
-        { key: 'alwaysOnTop', label: t('settings.alwaysOnTop', language), icon: <Pin size={16} /> },
-        {
-          key: 'toggleCamera',
-          label: t('settings.toggleCamera', language),
-          icon: <PowerOff size={16} />
-        }
-      ]
-    },
-    {
-      key: 'sizing',
-      title: t('settings.sizing', language),
-      actions: [
-        { key: 'sizeSmall', label: t('settings.sizeSmall', language) },
-        { key: 'sizeMedium', label: t('settings.sizeMedium', language) },
-        { key: 'sizeLarge', label: t('settings.sizeLarge', language) },
-        { key: 'sizeSidebar', label: t('settings.sizeSidebar', language) },
-        { key: 'sizeFullscreen', label: t('settings.sizeFullscreen', language) }
-      ]
-    },
-    {
-      key: 'recording',
-      title: t('settings.recording', language),
-      actions: [
-        {
-          key: 'startRecording',
-          label: t('settings.startRecording', language),
-          icon: <Clapperboard size={16} />
-        }
-      ]
-    }
-  ]
-
-  const sliderVal = roundingToSlider(visualState.rounding)
-  const isCircle = visualState.shape === 'circle'
-
+function GeneralTab({
+  language,
+  commitCamera
+}: {
+  language: 'en' | 'pt'
+  commitCamera: (patch: Record<string, unknown>) => void
+}): React.JSX.Element {
   return (
-    <div className="settings-container">
-      <div className="settings-top-bar">
-        <div
-          className="settings-header"
-          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+    <>
+      <div className="vyra-row">
+        <span className="vyra-label">{t('settings.language', language)}</span>
+        <select
+          className="vyra-select"
+          style={{ width: 160 }}
+          value={language}
+          onChange={(e) => commitCamera({ language: e.target.value })}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Clapperboard size={28} className="settings-icon" />
-            <h1>{t('settings.title', language)}</h1>
-          </div>
-        </div>
-        <p className="settings-description">{t('settings.description', language)}</p>
+          <option value="en">English</option>
+          <option value="pt">Português</option>
+        </select>
+      </div>
+    </>
+  )
+}
 
-        <div className="settings-tabs">
-          <button
-            className={`settings-tab ${activeTab === 'visuals' ? 'settings-tab--active' : ''}`}
-            onClick={() => setActiveTab('visuals')}
-          >
-            {t('settings.visuals', language)}
-          </button>
-          <button
-            className={`settings-tab ${activeTab === 'positioning' ? 'settings-tab--active' : ''}`}
-            onClick={() => setActiveTab('positioning')}
-          >
-            {t('settings.positioning', language)}
-          </button>
-          <button
-            className={`settings-tab ${activeTab === 'cameraControl' ? 'settings-tab--active' : ''}`}
-            onClick={() => setActiveTab('cameraControl')}
-          >
-            {t('settings.cameraControl', language)}
-          </button>
-          <button
-            className={`settings-tab ${activeTab === 'sizing' ? 'settings-tab--active' : ''}`}
-            onClick={() => setActiveTab('sizing')}
-          >
-            {t('settings.sizing', language)}
-          </button>
-          <button
-            className={`settings-tab ${activeTab === 'recording' ? 'settings-tab--active' : ''}`}
-            onClick={() => setActiveTab('recording')}
-          >
-            {t('settings.recording', language)}
-          </button>
+function CameraTab({
+  language,
+  commitCamera
+}: {
+  language: 'en' | 'pt'
+  commitCamera: (patch: Record<string, unknown>) => void
+}): React.JSX.Element {
+  const camera = useCameraStore()
+  const [displays, setDisplays] = useState<{ id: string; label: string }[]>([])
+
+  useEffect(() => {
+    void window.vyra?.getDisplays().then(setDisplays)
+  }, [])
+
+  return (
+    <>
+      <div className="vyra-row vyra-row--column">
+        <span className="vyra-label">{t('settings.cameraMirror', language)}</span>
+        <div style={{ display: 'flex', gap: 12 }}>
+          <Toggle
+            active={camera.isMirrored}
+            onChange={(v) => commitCamera({ isMirrored: v })}
+            label={t('settings.cameraMirror', language)}
+          />
+          <Toggle
+            active={camera.alwaysOnTop}
+            onChange={(v) => commitCamera({ alwaysOnTop: v })}
+            label={t('settings.cameraAlwaysOnTop', language)}
+          />
         </div>
       </div>
 
-      <div className="settings-sections">
-        {activeTab === 'visuals' && (
-          <div className="settings-section">
-            <div className="settings-list">
-              <div className="settings-row settings-row--column">
-                <span className="settings-label">{t('settings.cameraShape', language)}</span>
-                <div className="shape-picker">
-                  {SHAPE_KEYS.map((s) => (
-                    <button
-                      key={s.key}
-                      className={`shape-btn ${visualState.shape === s.key ? 'shape-btn--active' : ''}`}
-                      onClick={() => updateVisualState('shape', s.key)}
-                      title={t(s.i18nKey, language)}
-                    >
-                      {s.svg}
-                      <span className="shape-label">{t(s.i18nKey, language)}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
+      <SliderRow
+        label={t('settings.cameraOpacity', language)}
+        min={30}
+        max={100}
+        value={Math.round(camera.opacity * 100)}
+        suffix="%"
+        onChange={(v) => commitCamera({ opacity: v / 100 })}
+        language={language}
+      />
 
-              <div
-                className={`settings-row settings-row--column${isCircle ? ' settings-row--disabled' : ''}`}
-              >
-                <div className="rounding-header">
-                  <span className="settings-label">{t('settings.rounding', language)}</span>
-                  <span className="rounding-value">
-                    {isCircle
-                      ? '—'
-                      : visualState.rounding >= 9999
-                        ? '∞'
-                        : `${visualState.rounding}px`}
-                  </span>
-                </div>
-                <div className="slider-wrap">
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    step={1}
-                    value={sliderVal}
-                    className="rounding-slider"
-                    disabled={isCircle}
-                    onChange={(e) =>
-                      updateVisualState('rounding', sliderToRounding(Number(e.target.value)))
-                    }
-                  />
-                  <div className="slider-ticks">
-                    {roundingTicks.map((tick) => (
-                      <button
-                        key={tick.val}
-                        className={`slider-tick ${!isCircle && sliderVal === tick.val ? 'slider-tick--active' : ''}`}
-                        disabled={isCircle}
-                        onClick={() => updateVisualState('rounding', sliderToRounding(tick.val))}
-                      >
-                        {t(tick.i18nKey, language)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="settings-row settings-row--column">
-                <span className="settings-label">{t('settings.border', language)}</span>
-                <div
-                  style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}
-                >
-                  <div
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      background: 'rgba(0, 0, 0, 0.2)',
-                      padding: '14px',
-                      borderRadius: '10px',
-                      width: '100%'
-                    }}
-                  >
-                    <span
-                      className="settings-label"
-                      style={{
-                        fontSize: '13px',
-                        color: 'rgba(255,255,255,0.7)',
-                        marginBottom: '8px'
-                      }}
-                    >
-                      {t('settings.borderColor', language)}
-                    </span>
-                    <div className="gradient-picker">
-                      <button
-                        className={`gradient-swatch gradient-swatch--none ${visualState.borderGradient === 'none' ? 'gradient-swatch--active' : ''}`}
-                        onClick={() => {
-                          updateVisualState('borderGradient', 'none')
-                          setShowGradientEditor(false)
-                        }}
-                        title={t('settings.gradient.none', language)}
-                      >
-                        <span className="gradient-swatch__x">✕</span>
-                      </button>
-
-                      {GRADIENT_ENTRIES.map(([key, grad]) => (
-                        <button
-                          key={key}
-                          className={`gradient-swatch ${visualState.borderGradient === key ? 'gradient-swatch--active' : ''}`}
-                          style={{ background: grad }}
-                          onClick={() => {
-                            updateVisualState('borderGradient', key)
-                            setShowGradientEditor(false)
-                          }}
-                          title={key}
-                        />
-                      ))}
-
-                      <button
-                        className={`gradient-swatch gradient-swatch--custom ${isCustom ? 'gradient-swatch--active' : ''}`}
-                        style={isCustom ? { background: visualState.borderGradient } : undefined}
-                        onClick={handleOpenGradientEditor}
-                        title={t('settings.gradient.custom', language)}
-                      >
-                        {!isCustom && <span className="gradient-swatch__plus">+</span>}
-                      </button>
-                    </div>
-
-                    {showGradientEditor && (
-                      <div
-                        className="gradient-editor"
-                        style={{ background: 'transparent', padding: '12px 0 0 0' }}
-                      >
-                        <div
-                          className="gradient-editor__preview"
-                          style={{ background: customGradientValue }}
-                        />
-
-                        <div className="gradient-editor__colors">
-                          <label className="gradient-editor__color-label">
-                            <span>{t('settings.gradient.colorA', language)}</span>
-                            <div
-                              className="gradient-editor__color-wrap"
-                              style={{ background: gradColor1 }}
-                            >
-                              <input
-                                type="color"
-                                value={gradColor1}
-                                onChange={(e) => setGradColor1(e.target.value)}
-                                className="gradient-editor__color-input"
-                              />
-                            </div>
-                          </label>
-
-                          <div className="gradient-editor__arrow">→</div>
-
-                          <label className="gradient-editor__color-label">
-                            <span>{t('settings.gradient.colorB', language)}</span>
-                            <div
-                              className="gradient-editor__color-wrap"
-                              style={{ background: gradColor2 }}
-                            >
-                              <input
-                                type="color"
-                                value={gradColor2}
-                                onChange={(e) => setGradColor2(e.target.value)}
-                                className="gradient-editor__color-input"
-                              />
-                            </div>
-                          </label>
-                        </div>
-
-                        <div className="gradient-editor__angle-row">
-                          <div className="gradient-editor__angle-header">
-                            <span className="gradient-editor__angle-label">
-                              {t('settings.gradient.angle', language)}
-                            </span>
-                            <span className="gradient-editor__angle-value">{gradAngle}°</span>
-                          </div>
-                          <div className="gradient-editor__angle-presets">
-                            {PRESET_ANGLES.map((a) => (
-                              <button
-                                key={a}
-                                className={`gradient-editor__angle-btn ${gradAngle === a ? 'gradient-editor__angle-btn--active' : ''}`}
-                                onClick={() => setGradAngle(a)}
-                              >
-                                {a}°
-                              </button>
-                            ))}
-                          </div>
-                          <input
-                            type="range"
-                            min={0}
-                            max={360}
-                            step={1}
-                            value={gradAngle}
-                            className="rounding-slider"
-                            onChange={(e) => setGradAngle(Number(e.target.value))}
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div
-                    className={`border-width-row${visualState.borderGradient === 'none' ? ' settings-row--disabled' : ''}`}
-                  >
-                    <div className="rounding-header">
-                      <span
-                        className="settings-label"
-                        style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)' }}
-                      >
-                        {t('settings.borderWidth', language)}
-                      </span>
-                      <span className="rounding-value">{visualState.borderWidth}px</span>
-                    </div>
-                    <div className="slider-wrap" style={{ marginTop: '4px' }}>
-                      <input
-                        type="range"
-                        min={1}
-                        max={20}
-                        step={1}
-                        value={visualState.borderWidth}
-                        className="rounding-slider"
-                        disabled={visualState.borderGradient === 'none'}
-                        onChange={(e) => updateVisualState('borderWidth', Number(e.target.value))}
-                      />
-                      <div className="slider-ticks">
-                        {[
-                          { val: 1, i18nKey: 'settings.borderWidth.thin' },
-                          { val: 4, i18nKey: 'settings.borderWidth.default' },
-                          { val: 20, i18nKey: 'settings.borderWidth.thick' }
-                        ].map((tick) => (
-                          <button
-                            key={tick.val}
-                            className={`slider-tick ${visualState.borderWidth === tick.val ? 'slider-tick--active' : ''}`}
-                            disabled={visualState.borderGradient === 'none'}
-                            onClick={() => updateVisualState('borderWidth', tick.val)}
-                          >
-                            {t(tick.i18nKey, language)}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div
-                    className={`settings-row${visualState.borderGradient === 'none' ? ' settings-row--disabled' : ''}`}
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      background: 'rgba(0, 0, 0, 0.2)',
-                      padding: '14px',
-                      borderRadius: '10px',
-                      width: '100%'
-                    }}
-                  >
-                    <span
-                      className="settings-label"
-                      style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)' }}
-                    >
-                      {t('settings.animation', language)}
-                    </span>
-                    <button
-                      className={`toggle-button ${visualState.isBorderAnimated ? 'toggle-button--active' : ''}`}
-                      disabled={visualState.borderGradient === 'none'}
-                      onClick={() =>
-                        updateVisualState('isBorderAnimated', !visualState.isBorderAnimated)
-                      }
-                      style={{
-                        width: '40px',
-                        height: '24px',
-                        borderRadius: '12px',
-                        background: visualState.isBorderAnimated
-                          ? '#0A84FF'
-                          : 'rgba(255, 255, 255, 0.15)',
-                        position: 'relative',
-                        cursor: visualState.borderGradient === 'none' ? 'not-allowed' : 'pointer',
-                        border: 'none',
-                        transition: 'background 0.2s',
-                        padding: 0
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: '20px',
-                          height: '20px',
-                          borderRadius: '50%',
-                          background: '#fff',
-                          position: 'absolute',
-                          top: '2px',
-                          left: visualState.isBorderAnimated ? '18px' : '2px',
-                          transition: 'left 0.2s, background 0.2s'
-                        }}
-                      />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'recording' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <RecordingSettings
-              language={language}
-              visualState={visualState}
-              updateVisualState={updateVisualState}
-            />
-            {sections
-              .filter((section) => section.key === 'recording')
-              .map((section) => (
-                <div key={section.title} className="settings-section">
-                  <div className="settings-list">
-                    {section.actions.map((action) => (
-                      <React.Fragment key={action.key}>
-                        <div className="settings-row">
-                          <span
-                            className="settings-label"
-                            style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-                          >
-                            {action.icon}
-                            {action.label}
-                          </span>
-                          <div
-                            className={`settings-shortcut ${listeningKey === action.key ? 'listening' : ''}`}
-                            onClick={() => setListeningKey(action.key)}
-                          >
-                            {listeningKey === action.key
-                              ? t('settings.pressKeys', language)
-                              : formatMacShortcut(shortcuts[action.key]) === 'Unbound'
-                                ? t('settings.unbound', language)
-                                : formatMacShortcut(shortcuts[action.key])}
-                            <Keyboard size={14} className="shortcut-icon" />
-                          </div>
-                        </div>
-                        {action.key === 'startRecording' && (
-                          <div
-                            className="settings-global-warning"
-                            style={{
-                              fontSize: '12px',
-                              color: '#ffcc00',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '6px',
-                              marginTop: '4px',
-                              marginBottom: '8px'
-                            }}
-                          >
-                            <TriangleAlert size={14} />
-                            {t('settings.globalShortcutWarning', language)}
-                          </div>
-                        )}
-                      </React.Fragment>
-                    ))}
-                  </div>
-                </div>
-              ))}
-          </div>
-        )}
-
-        {sections
-          .filter((section) => section.key === activeTab && section.key !== 'recording')
-          .map((section) => (
-            <div key={section.title} className="settings-section">
-              <div className="settings-list">
-                {section.actions.map((action) => {
-                  const isSidebar = action.key === 'sizeSidebar'
-                  const rowHeader = (
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        width: '100%'
-                      }}
-                    >
-                      <span
-                        className="settings-label"
-                        style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-                      >
-                        {action.icon}
-                        {action.label}
-                      </span>
-                      <div
-                        className={`settings-shortcut ${listeningKey === action.key ? 'listening' : ''}`}
-                        onClick={() => setListeningKey(action.key)}
-                      >
-                        {listeningKey === action.key
-                          ? t('settings.pressKeys', language)
-                          : formatMacShortcut(shortcuts[action.key]) === 'Unbound'
-                            ? t('settings.unbound', language)
-                            : formatMacShortcut(shortcuts[action.key])}
-                        <Keyboard size={14} className="shortcut-icon" />
-                      </div>
-                    </div>
-                  )
-
-                  return (
-                    <React.Fragment key={action.key}>
-                      {!isSidebar ? (
-                        <div className="settings-row">{rowHeader}</div>
-                      ) : (
-                        <div
-                          className="settings-row settings-row--column"
-                          style={{ width: '100%', alignItems: 'stretch' }}
-                        >
-                          {rowHeader}
-                          <div
-                            style={{
-                              background: 'rgba(0, 0, 0, 0.2)',
-                              padding: '16px',
-                              borderRadius: '12px',
-                              marginTop: '4px',
-                              width: '100%'
-                            }}
-                          >
-                            <div style={{ width: '100%', marginBottom: '16px' }}>
-                              <div className="rounding-header">
-                                <span
-                                  className="settings-label"
-                                  style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)' }}
-                                >
-                                  {t('settings.width', language)}
-                                </span>
-                                <span className="rounding-value">
-                                  {visualState.sidebarWidthPercentage || 35}%
-                                </span>
-                              </div>
-                              <div className="slider-wrap" style={{ marginTop: '4px' }}>
-                                <input
-                                  type="range"
-                                  min={20}
-                                  max={50}
-                                  step={5}
-                                  value={visualState.sidebarWidthPercentage || 35}
-                                  className="rounding-slider"
-                                  onChange={(e) =>
-                                    updateVisualState(
-                                      'sidebarWidthPercentage',
-                                      Number(e.target.value)
-                                    )
-                                  }
-                                />
-                                <div className="slider-ticks">
-                                  {[
-                                    { val: 20, label: '20' },
-                                    { val: 25, label: '25' },
-                                    { val: 30, label: '30' },
-                                    { val: 35, label: '35' },
-                                    { val: 40, label: '40' },
-                                    { val: 45, label: '45' },
-                                    { val: 50, label: '50' }
-                                  ].map((tick) => (
-                                    <button
-                                      key={tick.val}
-                                      className={`slider-tick ${visualState.sidebarWidthPercentage === tick.val ? 'slider-tick--active' : ''}`}
-                                      onClick={() =>
-                                        updateVisualState('sidebarWidthPercentage', tick.val)
-                                      }
-                                    >
-                                      {tick.label}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                            </div>
-
-                            <div style={{ width: '100%' }}>
-                              <span
-                                className="settings-label"
-                                style={{
-                                  fontSize: '13px',
-                                  color: 'rgba(255,255,255,0.7)',
-                                  display: 'block',
-                                  marginBottom: '8px'
-                                }}
-                              >
-                                {t('settings.position', language)}
-                              </span>
-                              <div className="option-pills" style={{ width: '100%' }}>
-                                <button
-                                  className={`option-pill ${visualState.sidebarPosition === 'left' ? 'option-pill--active' : ''}`}
-                                  onClick={() => updateVisualState('sidebarPosition', 'left')}
-                                  style={{ flex: 1 }}
-                                >
-                                  {t('settings.sidebarLeft', language)}
-                                </button>
-                                <button
-                                  className={`option-pill ${!visualState.sidebarPosition || visualState.sidebarPosition === 'right' ? 'option-pill--active' : ''}`}
-                                  onClick={() => updateVisualState('sidebarPosition', 'right')}
-                                  style={{ flex: 1 }}
-                                >
-                                  {t('settings.sidebarRight', language)}
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                      {(action.key === 'toggleCamera' || action.key === 'startRecording') && (
-                        <div
-                          className="settings-global-warning"
-                          style={{
-                            fontSize: '12px',
-                            color: '#ffcc00',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            marginTop: '4px',
-                            marginBottom: '8px'
-                          }}
-                        >
-                          <TriangleAlert size={14} />
-                          {t('settings.globalShortcutWarning', language)}
-                        </div>
-                      )}
-                    </React.Fragment>
-                  )
-                })}
-              </div>
-            </div>
+      <div className="vyra-row">
+        <span className="vyra-label">{t('settings.cameraScreen', language)}</span>
+        <select
+          className="vyra-select"
+          style={{ width: 220 }}
+          value={camera.cameraScreenId}
+          onChange={(e) => commitCamera({ cameraScreenId: e.target.value })}
+        >
+          <option value="">Primary</option>
+          {displays.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.label}
+            </option>
           ))}
+        </select>
       </div>
-      <div className="settings-footer">
-        <button className="reset-button" onClick={() => resetSettings(activeTab)}>
-          <RotateCcw size={16} />
-          {t('settings.reset', language)}
+    </>
+  )
+}
+
+function AppearanceTab({
+  language,
+  commitCamera
+}: {
+  language: 'en' | 'pt'
+  commitCamera: (patch: Record<string, unknown>) => void
+}): React.JSX.Element {
+  const camera = useCameraStore()
+  const border = camera.border
+
+  return (
+    <>
+      <div className="vyra-row vyra-row--column">
+        <span className="vyra-label">{t('settings.shape', language)}</span>
+        <PillGroup
+          options={SHAPES.map((s) => ({ value: s, label: t(`settings.shape.${s}`, language) }))}
+          value={camera.shape}
+          onChange={(v) => commitCamera({ shape: v })}
+        />
+      </div>
+
+      <div className="vyra-row vyra-row--column">
+        <span className="vyra-label">{t('settings.size', language)}</span>
+        <PillGroup
+          options={SIZES.map((s) => ({ value: s, label: t(`settings.size.${s}`, language) }))}
+          value={camera.size}
+          onChange={(v) => commitCamera({ size: v })}
+        />
+      </div>
+
+      <div className="vyra-row vyra-row--column">
+        <span className="vyra-label">{t('settings.position', language)}</span>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+          {POSITIONS.map((p) => (
+            <button key={p} className="vyra-pill" onClick={() => window.vyra?.setCameraPosition(p)}>
+              {t(`settings.position.${p}`, language)}
+            </button>
+          ))}
+        </div>
+        <span className="vyra-hint">Free positioning: drag the camera anywhere on screen.</span>
+      </div>
+
+      <SliderRow
+        label={t('settings.cameraRounding', language)}
+        min={0}
+        max={64}
+        value={camera.rounding}
+        suffix="px"
+        onChange={(v) => commitCamera({ rounding: v })}
+        language={language}
+      />
+
+      <div className="vyra-row vyra-row--column">
+        <span className="vyra-label">{t('settings.border', language)}</span>
+        <PillGroup
+          options={[
+            { value: 'none', label: t('settings.border.none', language) },
+            ...Object.keys(GRADIENTS)
+              .filter((k) => k !== 'none')
+              .map((k) => ({ value: k, label: k }))
+          ]}
+          value={border.gradient}
+          onChange={(v) => commitCamera({ border: { ...border, gradient: v } })}
+        />
+        {border.gradient !== 'none' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <SliderRow
+              label={t('settings.border.width', language)}
+              min={1}
+              max={20}
+              value={border.width}
+              suffix="px"
+              onChange={(v) => commitCamera({ border: { ...border, width: v } })}
+              language={language}
+            />
+            <Toggle
+              active={border.animated}
+              onChange={(v) => commitCamera({ border: { ...border, animated: v } })}
+              label={t('settings.border.animated', language)}
+            />
+          </div>
+        )}
+      </div>
+    </>
+  )
+}
+
+function RecordingTab({ language }: { language: 'en' | 'pt' }): React.JSX.Element {
+  const [rec, setRec] = useState<AppSettings['recording'] | null>(null)
+  const encoders = useMemo(() => encoderOptions(), [])
+
+  useEffect(() => {
+    void window.vyra?.getInitialState().then((state) => {
+      setRec((state as unknown as AppSettings).recording)
+    })
+  }, [])
+
+  if (!rec) return <></>
+
+  const patch = (p: Partial<AppSettings['recording']>): void => {
+    setRec({ ...rec, ...p })
+    window.vyra?.updateRecording(p)
+  }
+
+  return (
+    <>
+      <div className="vyra-row vyra-row--column">
+        <span className="vyra-label">{t('settings.recording.mode', language)}</span>
+        <PillGroup
+          options={[
+            { value: 'screen', label: t('settings.recording.mode.screen', language) },
+            { value: 'camera', label: t('settings.recording.mode.camera', language) },
+            { value: 'screen+camera', label: t('settings.recording.mode.screen+camera', language) }
+          ]}
+          value={rec.mode}
+          onChange={(v) => patch({ mode: v as AppSettings['recording']['mode'] })}
+        />
+        {rec.mode !== 'screen' && (
+          <span className="vyra-hint">
+            Camera modes record the camera window via capture; screen capture stays as implemented.
+          </span>
+        )}
+      </div>
+
+      <div className="vyra-row vyra-row--column">
+        <span className="vyra-label">{t('settings.recording.resolution', language)}</span>
+        <PillGroup
+          options={['720p', '1080p', '1440p', '2160p'].map((r) => ({ value: r, label: r }))}
+          value={rec.resolution}
+          onChange={(v) => patch({ resolution: v })}
+        />
+      </div>
+
+      <div className="vyra-row vyra-row--column">
+        <span className="vyra-label">{t('settings.recording.fps', language)}</span>
+        <PillGroup
+          options={['30', '60'].map((f) => ({ value: f, label: `${f} FPS` }))}
+          value={rec.fps}
+          onChange={(v) => patch({ fps: v })}
+        />
+      </div>
+
+      <div className="vyra-row vyra-row--column">
+        <span className="vyra-label">{t('settings.recording.encoder', language)}</span>
+        <PillGroup
+          options={encoders.map((e) => ({ value: e.value, label: t(e.labelKey, language) }))}
+          value={rec.encoder}
+          onChange={(v) => patch({ encoder: v })}
+        />
+      </div>
+
+      <div className="vyra-row">
+        <span className="vyra-label">{t('settings.recording.folder', language)}</span>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', minWidth: 0 }}>
+          <span
+            className="vyra-hint"
+            style={{
+              maxWidth: 220,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap'
+            }}
+            title={rec.folder}
+          >
+            {rec.folder || t('settings.recording.folder.default', language)}
+          </span>
+          <button
+            className="vyra-btn"
+            onClick={() =>
+              void window.vyra?.chooseRecordingFolder().then((f) => f && patch({ folder: f }))
+            }
+          >
+            <FolderOpen size={13} />
+            {t('settings.recording.folder.choose', language)}
+          </button>
+          <button className="vyra-btn" onClick={() => void window.vyra?.openPath('recordings')}>
+            <Monitor size={13} />
+            {t('settings.recording.browse', language)}
+          </button>
+        </div>
+      </div>
+    </>
+  )
+}
+
+function AudioTab({ language }: { language: 'en' | 'pt' }): React.JSX.Element {
+  const { devices } = useAudioDevices()
+  const [rec, setRec] = useState<AppSettings['recording'] | null>(null)
+  const [micStream, setMicStream] = useState<MediaStream | null>(null)
+
+  useEffect(() => {
+    void window.vyra?.getInitialState().then((state) => {
+      setRec((state as unknown as AppSettings).recording)
+    })
+  }, [])
+
+  useEffect(() => {
+    let current: MediaStream | null = null
+    const micId = rec?.selectedMicrophoneId
+    void (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: micId && micId !== 'default' ? { deviceId: { exact: micId } } : true
+        })
+        current = stream
+        setMicStream(stream)
+      } catch {
+        setMicStream(null)
+      }
+    })()
+    return () => {
+      current?.getTracks().forEach((tr) => tr.stop())
+    }
+  }, [rec?.selectedMicrophoneId])
+
+  const micLevel = useAudioMeter(micStream)
+
+  if (!rec) return <></>
+
+  const patch = (p: Partial<AppSettings['recording']>): void => {
+    setRec({ ...rec, ...p })
+    window.vyra?.updateRecording(p)
+  }
+
+  return (
+    <>
+      <div className="vyra-row vyra-row--column">
+        <span className="vyra-label">{t('settings.audio.microphone', language)}</span>
+        <select
+          className="vyra-select"
+          value={rec.selectedMicrophoneId}
+          onChange={(e) => patch({ selectedMicrophoneId: e.target.value })}
+        >
+          <option value="default">{t('settings.audio.mic.default', language)}</option>
+          {devices.map((d) => (
+            <option key={d.deviceId} value={d.deviceId}>
+              {d.label || d.deviceId.substring(0, 8)}
+            </option>
+          ))}
+        </select>
+        <div
+          style={{
+            height: 6,
+            background: 'rgba(255,255,255,0.1)',
+            borderRadius: 3,
+            overflow: 'hidden'
+          }}
+        >
+          <div
+            style={{
+              width: `${micLevel}%`,
+              height: '100%',
+              background: micLevel > 85 ? '#ff453a' : micLevel > 60 ? '#ffdb00' : '#34d399',
+              transition: 'width 0.1s ease-out, background 0.1s ease-out'
+            }}
+          />
+        </div>
+      </div>
+
+      <SliderRow
+        label={t('settings.audio.micVolume', language)}
+        min={0}
+        max={100}
+        value={rec.microphoneAudioVolume}
+        suffix="%"
+        onChange={(v) => patch({ microphoneAudioVolume: v })}
+        language={language}
+      />
+      <SliderRow
+        label={t('settings.audio.systemVolume', language)}
+        min={0}
+        max={100}
+        value={rec.systemAudioVolume}
+        suffix="%"
+        onChange={(v) => patch({ systemAudioVolume: v })}
+        language={language}
+      />
+    </>
+  )
+}
+
+function ShortcutsTab({ language }: { language: 'en' | 'pt' }): React.JSX.Element {
+  const [shortcuts, setShortcuts] = useState<Record<string, string>>({})
+  const [listening, setListening] = useState<ShortcutAction | null>(null)
+
+  useEffect(() => {
+    void window.vyra?.getShortcuts().then(setShortcuts)
+    const off = window.vyra?.on('settings-reset', (s: unknown) => {
+      const snap = s as AppSettings
+      if (snap?.shortcuts) setShortcuts(snap.shortcuts as Record<string, string>)
+    })
+    return off
+  }, [])
+
+  useEffect(() => {
+    if (!listening) return
+    const handle = (e: KeyboardEvent): void => {
+      e.preventDefault()
+      e.stopPropagation()
+      if (e.code === 'Escape') {
+        setListening(null)
+        return
+      }
+      const mods = [
+        'MetaLeft',
+        'MetaRight',
+        'ControlLeft',
+        'ControlRight',
+        'AltLeft',
+        'AltRight',
+        'ShiftLeft',
+        'ShiftRight'
+      ]
+      if (mods.includes(e.code)) return
+      const parts: string[] = []
+      if (e.metaKey || e.ctrlKey) parts.push('CmdOrCtrl')
+      if (e.altKey) parts.push('Alt')
+      if (e.shiftKey) parts.push('Shift')
+      const key = e.code.startsWith('Key')
+        ? e.code.replace('Key', '')
+        : e.code.startsWith('Digit')
+          ? e.code.replace('Digit', '')
+          : e.code === 'Space'
+            ? 'Space'
+            : e.key
+      parts.push(key)
+      const combo = parts.join('+')
+      window.vyra?.updateShortcut(listening, combo)
+      setShortcuts((prev) => ({ ...prev, [listening]: combo }))
+      setListening(null)
+    }
+    window.addEventListener('keydown', handle)
+    return () => window.removeEventListener('keydown', handle)
+  }, [listening])
+
+  const globalDefs = SHORTCUT_DEFINITIONS.filter((d) => d.global)
+  const localDefs = SHORTCUT_DEFINITIONS.filter((d) => !d.global)
+
+  const renderRow = (def: (typeof SHORTCUT_DEFINITIONS)[number]): React.JSX.Element => (
+    <div className="vyra-row" key={def.action}>
+      <span className="vyra-label" style={{ fontSize: 13.5 }}>
+        {def.action.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase())}
+        {def.global && (
+          <span style={{ fontSize: 10, color: 'var(--color-faint)', marginLeft: 8 }}>global</span>
+        )}
+      </span>
+      <div
+        className={`vyra-shortcut-key ${listening === def.action ? 'listening' : ''}`}
+        onClick={() => setListening(def.action)}
+        role="button"
+      >
+        {listening === def.action
+          ? t('settings.pressKeys', language)
+          : shortcuts[def.action] || t('settings.unbound', language)}
+        <Keyboard size={13} style={{ opacity: 0.7 }} />
+      </div>
+    </div>
+  )
+
+  return (
+    <>
+      <span className="vyra-hint" style={{ marginBottom: 4 }}>
+        {t('settings.shortcuts.note', language)}
+      </span>
+      <div className="vyra-section-title">Global</div>
+      {globalDefs.map(renderRow)}
+      <div className="vyra-section-title" style={{ marginTop: 12 }}>
+        In-app (camera focused)
+      </div>
+      {localDefs.map(renderRow)}
+      <button
+        className="vyra-btn vyra-btn--danger"
+        style={{ alignSelf: 'flex-start', marginTop: 12 }}
+        onClick={() => {
+          window.vyra?.resetSettings('shortcuts')
+          void window.vyra?.getShortcuts().then(setShortcuts)
+        }}
+      >
+        <RotateCcw size={13} />
+        {t('settings.reset', language)}
+      </button>
+    </>
+  )
+}
+
+function PresetsTab({
+  language,
+  presets,
+  refresh
+}: {
+  language: 'en' | 'pt'
+  presets: CameraPreset[]
+  refresh: () => void
+}): React.JSX.Element {
+  const [activeId, setActiveId] = useState('')
+
+  useEffect(() => {
+    void window.vyra?.getInitialState().then((state) => {
+      setActiveId((state as unknown as AppSettings).activePresetId ?? '')
+    })
+  }, [])
+
+  return (
+    <>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button
+          className="vyra-btn vyra-btn--primary"
+          onClick={() => {
+            void window.vyra?.presetsCreate({ name: 'My preset' }).then(refresh)
+          }}
+        >
+          <Sparkles size={13} />
+          {t('settings.presets.new', language)}
+        </button>
+        <button
+          className="vyra-btn"
+          onClick={() => {
+            window.vyra?.presetsCapture('Captured preset')
+            setTimeout(refresh, 200)
+          }}
+        >
+          {t('settings.presets.capture', language)}
         </button>
       </div>
-    </div>
+
+      {presets.map((p) => (
+        <div className="vyra-row" key={p.id}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+            <span className="vyra-label">
+              {p.name}
+              {p.builtin && (
+                <span style={{ fontSize: 10, color: 'var(--color-faint)', marginLeft: 8 }}>
+                  built-in
+                </span>
+              )}
+            </span>
+            <span className="vyra-hint">
+              {t(`settings.shape.${p.shape}`, language)} · {t(`settings.size.${p.size}`, language)}{' '}
+              · {t(`settings.position.${p.position}`, language)}
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+            <button
+              className={`vyra-pill ${activeId === p.id ? 'vyra-pill--active' : ''}`}
+              onClick={() => {
+                window.vyra?.presetsApply(p.id)
+                setActiveId(p.id)
+              }}
+            >
+              Apply
+            </button>
+            <button
+              className="vyra-pill"
+              title={t('settings.presets.duplicate', language)}
+              onClick={() => void window.vyra?.presetsDuplicate(p.id).then(refresh)}
+            >
+              ⧉
+            </button>
+            {!p.builtin && (
+              <button
+                className="vyra-pill vyra-btn--danger"
+                title={t('settings.presets.delete', language)}
+                style={{ borderColor: 'rgba(255,69,58,0.4)', color: 'var(--color-danger)' }}
+                onClick={() => void window.vyra?.presetsDelete(p.id).then(refresh)}
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+      <span className="vyra-hint">{t('settings.presets.builtinHint', language)}</span>
+    </>
+  )
+}
+
+function AdvancedTab({ language }: { language: 'en' | 'pt' }): React.JSX.Element {
+  return (
+    <>
+      <div className="vyra-row">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span className="vyra-label">{t('settings.advanced.omarchy', language)}</span>
+          <span className="vyra-hint" style={{ maxWidth: 380 }}>
+            {t('settings.advanced.omarchy.desc', language)}
+          </span>
+        </div>
+      </div>
+      <div className="vyra-row">
+        <span className="vyra-label">{t('settings.advanced.openFolder', language)}</span>
+        <button className="vyra-btn" onClick={() => void window.vyra?.openPath('settings')}>
+          <FolderOpen size={13} />
+          Open
+        </button>
+      </div>
+      <div className="vyra-row">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span className="vyra-label">{t('settings.advanced.about', language)}</span>
+          <span className="vyra-hint">
+            VYRA Studio · Your camera. Your space. · All processing is local. No telemetry.
+          </span>
+        </div>
+      </div>
+    </>
   )
 }

@@ -121,37 +121,51 @@ export function ScreenPermissionErrorOverlay({
       <style>{`.perm-overlay::-webkit-scrollbar{display:none} @media (max-width: 380px){.perm-actions{flex-direction:column !important;width:100%}.perm-actions button{width:100%}} @media (max-height: 420px){.perm-overlay{padding-top:12px !important;justify-content:flex-start !important}}`}</style>
       <div style={styles.overlay} className="perm-overlay">
         <div style={styles.iconWrap}>
-          <Monitor size={44} color="#ff9f0a" style={{ width: 'clamp(28px, 8vw, 44px)', height: 'clamp(28px, 8vw, 44px)' }} />
+          <Monitor
+            size={44}
+            color="#ff9f0a"
+            style={{ width: 'clamp(28px, 8vw, 44px)', height: 'clamp(28px, 8vw, 44px)' }}
+          />
         </div>
         <h2 style={styles.title}>{t('screen.error.title', lang)}</h2>
         <p style={styles.message}>{t('screen.error.message', lang)}</p>
         <p style={styles.instructions}>{getInstructions()}</p>
 
-        <div className="perm-actions" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center', maxWidth: '90%', width: 'auto' }}>
-        {platform === 'mac' && (
+        <div
+          className="perm-actions"
+          style={{
+            display: 'flex',
+            gap: '8px',
+            flexWrap: 'wrap',
+            justifyContent: 'center',
+            maxWidth: '90%',
+            width: 'auto'
+          }}
+        >
+          {platform === 'mac' && (
+            <button
+              onClick={() => window.electron?.ipcRenderer.invoke('open-system-settings', 'screen')}
+              style={styles.retryButton}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 159, 10, 0.35)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255, 159, 10, 0.2)')}
+            >
+              {t('screen.error.openSettings', lang)}
+            </button>
+          )}
           <button
-            onClick={() => window.electron?.ipcRenderer.invoke('open-system-settings', 'screen')}
+            onClick={handleRetry}
             style={styles.retryButton}
             onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 159, 10, 0.35)')}
             onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255, 159, 10, 0.2)')}
           >
-            {t('screen.error.openSettings', lang)}
+            {t('screen.error.tryAgain', lang)}
           </button>
-        )}
-        <button
-          onClick={handleRetry}
-          style={styles.retryButton}
-          onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 159, 10, 0.35)')}
-          onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255, 159, 10, 0.2)')}
-        >
-          {t('screen.error.tryAgain', lang)}
-        </button>
-      </div>
+        </div>
 
-      {screenPermission === 'denied' && (
-        <div style={styles.deniedStatus}>{t('screen.status.denied', lang)}</div>
-      )}
-    </div>
+        {screenPermission === 'denied' && (
+          <div style={styles.deniedStatus}>{t('screen.status.denied', lang)}</div>
+        )}
+      </div>
     </>
   )
 }

@@ -17,3 +17,13 @@ createRoot(document.getElementById('root')!).render(
     <App />
   </StrictMode>
 )
+
+declare global {
+  interface Window {
+    // Shortcut cache for the camera window's local key handler.
+    // Populated once on mount; updated via settings-reset events.
+    // Not part of the preload bridge on purpose (renderer-local).
+
+    vyraCacheShortcuts?: Record<string, string>
+  }
+}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCameraStore } from '../../../stores/camera.store'
 
 // A freshly hot-plugged webcam can take a moment to register with Chromium,
 // which may also cache an empty device list until something triggers a rescan.
@@ -32,6 +33,9 @@ export function useCameraDevices(): {
 
   const applyDevices = useCallback((videoDevices: MediaDeviceInfo[]): void => {
     setDevices(videoDevices)
+    useCameraStore.getState().patch({
+      devices: videoDevices.map((d) => ({ deviceId: d.deviceId, label: d.label }))
+    })
     setSelectedDeviceId((prev) => {
       const stillExists = videoDevices.some((d) => d.deviceId === prev)
       if (stillExists && prev !== '') return prev
@@ -110,6 +114,14 @@ export function useCameraDevices(): {
 
     return () => clearInterval(pollTimer)
   }, [permissionError, getDevices])
+
+  // Sync selected device to main when it changes after initialization
+  useEffect(() => {
+    if (useCameraStore.getState().initialized && selectedDeviceId) {
+      useCameraStore.getState().patch({ selectedDeviceId })
+      useCameraStore.getState().commit()
+    }
+  }, [selectedDeviceId])
 
   return { devices, selectedDeviceId, setSelectedDeviceId, permissionError, refreshDevices }
 }

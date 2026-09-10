@@ -14,17 +14,14 @@ export function usePermissions(): {
 
   const checkPermissions = async (): Promise<void> => {
     try {
-      const camStatus = await window.electron.ipcRenderer.invoke('check-media-permission', 'camera')
-      setCameraPermission(camStatus)
+      const camStatus = await window.vyra.checkMediaPermission('camera')
+      setCameraPermission(camStatus as PermissionStatus)
 
-      const micStatus = await window.electron.ipcRenderer.invoke(
-        'check-media-permission',
-        'microphone'
-      )
-      setMicrophonePermission(micStatus)
+      const micStatus = await window.vyra.checkMediaPermission('microphone')
+      setMicrophonePermission(micStatus as PermissionStatus)
 
-      const screenStatus = await window.electron.ipcRenderer.invoke('check-screen-permission')
-      setScreenPermission(screenStatus)
+      const screenStatus = await window.vyra.checkScreenPermission()
+      setScreenPermission(screenStatus as PermissionStatus)
     } catch (err) {
       console.error('Failed to check permissions via IPC', err)
     }
@@ -34,20 +31,14 @@ export function usePermissions(): {
     let cancelled = false
     void (async () => {
       try {
-        const camStatus = await window.electron.ipcRenderer.invoke(
-          'check-media-permission',
-          'camera'
-        )
-        if (!cancelled) setCameraPermission(camStatus)
+        const camStatus = await window.vyra.checkMediaPermission('camera')
+        if (!cancelled) setCameraPermission(camStatus as PermissionStatus)
 
-        const micStatus = await window.electron.ipcRenderer.invoke(
-          'check-media-permission',
-          'microphone'
-        )
-        if (!cancelled) setMicrophonePermission(micStatus)
+        const micStatus = await window.vyra.checkMediaPermission('microphone')
+        if (!cancelled) setMicrophonePermission(micStatus as PermissionStatus)
 
-        const screenStatus = await window.electron.ipcRenderer.invoke('check-screen-permission')
-        if (!cancelled) setScreenPermission(screenStatus)
+        const screenStatus = await window.vyra.checkScreenPermission()
+        if (!cancelled) setScreenPermission(screenStatus as PermissionStatus)
       } catch (err) {
         console.error('Failed to check permissions via IPC', err)
       }

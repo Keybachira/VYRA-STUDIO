@@ -1,14 +1,22 @@
-import React, { useCallback, useEffect, useState, useRef } from 'react'
+/**
+ * VYRA Studio — floating camera page.
+ * Transparent fullscreen overlay: renders the camera bubble, drag, snap, HUD.
+ */
+
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { getGradient } from '../../../../shared/colors'
+import { dimensionsForShape, SIZES } from '../../../../shared/presets'
+import type { SnapPosition } from '../../../../shared/types'
 import { useCameraDevices } from './hooks/use-camera-devices'
 import { useCameraStream } from './hooks/use-camera-stream'
-import { useTrayEvents } from './hooks/use-tray-events'
+import { useCameraEvents } from './hooks/use-camera-events'
 import { PermissionErrorOverlay } from './components/permission-error-overlay'
 import { ScreenPermissionErrorOverlay } from './components/screen-permission-error-overlay'
 import { MicPermissionErrorOverlay } from './components/mic-permission-error-overlay'
 import { RecordingErrorOverlay } from './components/recording-error-overlay'
-
-const SIZES = [300, 450, 600]
+import { CameraHud } from './components/camera-hud'
+import { useCameraStore } from '../../stores/camera.store'
+import { useUiStore } from '../../stores/ui.store'
 
 const isLinux =
   typeof navigator !== 'undefined' &&
@@ -20,7 +28,6 @@ const isWindows =
   (navigator.platform.toLowerCase().includes('win') ||
     navigator.userAgent.toLowerCase().includes('windows'))
 
-//Aquiles_Bachira
 function getScreenWidth(): number {
   const vw = window.innerWidth || 0
   const sw = window.screen?.width ?? vw
@@ -28,7 +35,6 @@ function getScreenWidth(): number {
   return Math.min(vw || avail, isWindows ? avail : sw) || vw || sw
 }
 
-//Aquiles_Bachira
 function getScreenHeight(): number {
   const vh = window.innerHeight || 0
   const sh = window.screen?.height ?? vh
@@ -36,7 +42,6 @@ function getScreenHeight(): number {
   return Math.min(vh || availH, isWindows ? availH : sh) || vh || sh
 }
 
-//Aquiles_Bachira
 function clampToViewport(w: number, h: number, sw: number, sh: number): { w: number; h: number } {
   const maxW = Math.max(160, Math.min(sw * 0.92, sw - 16))
   const maxH = Math.max(160, Math.min(sh * 0.88, sh - 16))
@@ -45,260 +50,212 @@ function clampToViewport(w: number, h: number, sw: number, sh: number): { w: num
   return { w: Math.round(w * scale), h: Math.round(h * scale) }
 }
 
+const SNAP_OFFSETS: Record<SnapPosition, { xf: number; yf: number }> = {
+  'top-left': { xf: 0, yf: 0 },
+  'top-center': { xf: 0.5, yf: 0 },
+  'top-right': { xf: 1, yf: 0 },
+  'center-left': { xf: 0, yf: 0.5 },
+  center: { xf: 0.5, yf: 0.5 },
+  'center-right': { xf: 1, yf: 0.5 },
+  'bottom-left': { xf: 0, yf: 1 },
+  'bottom-center': { xf: 0.5, yf: 1 },
+  'bottom-right': { xf: 1, yf: 1 }
+}
+
+function computeBubbleGeometry(
+  size: string,
+  shape: string,
+  borderGradient: string,
+  borderWidth: number,
+  sidebarWidthPercentage: number
+): { w: number; h: number } {
+  const sw = getScreenWidth()
+  const sh = getScreenHeight()
+
+  if (size === 'fullscreen') {
+    return { w: isLinux ? sw : window.innerWidth, h: isLinux ? sh : window.innerHeight }
+  }
+  if (size === 'sidebar') {
+    const pct = (sidebarWidthPercentage || 35) / 100
+    const w = Math.round((isLinux ? sw : window.innerWidth) * pct)
+    const h = isLinux ? sh : window.innerHeight
+    return { w, h }
+  }
+
+  const base = SIZES[size] ?? SIZES.sm
+  const { width, height } = dimensionsForShape(base, shape)
+  const clamped = clampToViewport(width, height, sw, sh)
+
+  const hasBorder = borderGradient !== 'none'
+  const totalW = hasBorder ? clamped.w + borderWidth * 2 : clamped.w
+  const totalH = hasBorder ? clamped.h + borderWidth * 2 : clamped.h
+  const clampedTotal = clampToViewport(totalW, totalH, sw, sh)
+  if (clampedTotal.w === totalW && clampedTotal.h === totalH) {
+    return { w: totalW, h: totalH }
+  }
+  const inner = clampToViewport(totalW - borderWidth * 2, totalH - borderWidth * 2, sw, sh)
+  return { w: Math.max(120, inner.w), h: Math.max(120, inner.h) }
+}
+
+function computeSnappedPosition(pos: SnapPosition, w: number, h: number): { x: number; y: number } {
+  const margin = 12
+  const sw = getScreenWidth()
+  const sh = getScreenHeight()
+  const { xf, yf } = SNAP_OFFSETS[pos] ?? SNAP_OFFSETS['bottom-right']
+  const x = Math.round(xf * (sw - w) + (xf === 0.5 ? 0 : xf === 1 ? -margin : margin))
+  const y = Math.round(yf * (sh - h) + (yf === 0.5 ? 0 : yf === 1 ? -margin : margin))
+  return { x: Math.max(0, x), y: Math.max(0, y) }
+}
+
 export function CameraPage(): React.JSX.Element {
+  const camera = useCameraStore()
+  const ui = useUiStore()
+
   const {
     devices,
     selectedDeviceId,
-    setSelectedDeviceId,
     permissionError: devicesError,
     refreshDevices
   } = useCameraDevices()
   const [streamRetryNonce, setStreamRetryNonce] = useState(0)
-  const [isMirrored, setIsMirrored] = useState(true)
-  const [shape, setShape] = useState<'circle' | 'square' | 'vertical-rect' | 'horizontal-rect'>(
-    'circle'
-  )
-  const [sizeIndex, setSizeIndex] = useState<number>(0)
-  const [sidebarWidthPercentage, setSidebarWidthPercentage] = useState<number>(35)
-  const [sidebarPosition, setSidebarPosition] = useState<string>('right')
-  const [rounding, setRounding] = useState<number>(24)
-  const [alwaysOnTop, setAlwaysOnTop] = useState<boolean>(true)
-  const [powerOn, setPowerOn] = useState<boolean>(false)
-  const [initialized, setInitialized] = useState(false)
-
-  const [borderGradient, setBorderGradient] = useState<string>('none')
-  const [borderWidth, setBorderWidth] = useState<number>(4)
-  const [isBorderAnimated, setIsBorderAnimated] = useState<boolean>(false)
-  const [language, setLanguage] = useState<'en' | 'pt'>('en')
-
-  const [prevGradient, setPrevGradient] = useState<string>('none')
-  const [currentGradient, setCurrentGradient] = useState<string>('none')
-  const [fade, setFade] = useState(false)
-
-  const [screenPermissionDenied, setScreenPermissionDenied] = useState(false)
-  const [micPermissionDenied, setMicPermissionDenied] = useState(false)
-  const [recordingError, setRecordingError] = useState<{
-    code: string
-    message?: string
-    stderr?: string
-  } | null>(null)
-
   const { videoRef, permissionError: streamError } = useCameraStream(
     selectedDeviceId,
-    powerOn,
+    camera.powerOn,
     streamRetryNonce
   )
   const hasPermissionError = devicesError || streamError
 
-  const handleDetectionRetry = useCallback((): void => {
-    refreshDevices()
-    setStreamRetryNonce((n) => n + 1)
-  }, [refreshDevices])
+  const [cameraWidth, setCameraWidth] = useState(300)
+  const [cameraHeight, setCameraHeight] = useState(300)
+  const [cameraX, setCameraX] = useState(0)
+  const [cameraY, setCameraY] = useState(0)
 
-  const [cameraWidth, setCameraWidth] = useState<number>(300)
-  const [cameraHeight, setCameraHeight] = useState<number>(300)
-  const [cameraX, setCameraX] = useState<number>(0)
-  const [cameraY, setCameraY] = useState<number>(0)
   const isDragging = useRef(false)
   const dragOffset = useRef({ x: 0, y: 0 })
   const currentDragPos = useRef({ x: 0, y: 0 })
   const containerRef = useRef<HTMLDivElement>(null)
-  const isAnimating = useRef(false)
-  const cameraRect = useRef({ x: 0, y: 0, w: 0, h: 0 })
+  const videoWrapRef = useRef<HTMLDivElement>(null)
+
+  // Notify main about detected devices
+  useEffect(() => {
+    window.vyra?.syncDevices(devices.map((d) => ({ deviceId: d.deviceId, label: d.label })))
+  }, [devices])
+
+  const applySize = useCallback(() => {
+    const { w, h } = computeBubbleGeometry(
+      camera.size,
+      camera.shape,
+      camera.border.gradient,
+      camera.border.width,
+      camera.sidebarWidthPercentage
+    )
+    setCameraWidth(w)
+    setCameraHeight(h)
+    if (isLinux && window.vyra) {
+      window.vyra.resizeCameraWindow(w, h)
+    } else {
+      setCameraX((prev) => Math.min(Math.max(0, prev), window.innerWidth - w))
+      setCameraY((prev) => Math.min(Math.max(0, prev), window.innerHeight - h))
+    }
+  }, [
+    camera.size,
+    camera.shape,
+    camera.border.gradient,
+    camera.border.width,
+    camera.sidebarWidthPercentage
+  ])
 
   useEffect(() => {
-    cameraRect.current = { x: cameraX, y: cameraY, w: cameraWidth, h: cameraHeight }
-  }, [cameraX, cameraY, cameraWidth, cameraHeight])
-
-  useEffect(() => {
-    // Polling of mouse events removed in favor of onMouseEnter/onMouseLeave for better performance
-  }, [])
-
-  const applySize = useCallback(
-    (index: number, currentShape: string) => {
-      isAnimating.current = true
-      setTimeout(() => {
-        isAnimating.current = false
-      }, 450)
-
-      const sw = getScreenWidth()
-      const sh = getScreenHeight()
-
-      if (index === 4) {
-        const w = isLinux ? sw : window.innerWidth
-        const h = isLinux ? sh : window.innerHeight
-        setCameraWidth(w)
-        setCameraHeight(h)
-        setCameraX(0)
-        setCameraY(0)
-        if (isLinux && window.electron) {
-          window.electron.ipcRenderer.send('resize-camera-window', w, h)
-          window.electron.ipcRenderer.send('move-camera-window', 0, 0)
+    window.vyra
+      ?.getInitialState()
+      .then((state) => {
+        const cam = state as unknown as {
+          camera?: Record<string, unknown>
+          isCameraOn?: boolean
         }
-        return
-      }
-      if (index === 3) {
-        const pct = sidebarWidthPercentage / 100
-        const w = isLinux ? Math.round(sw * pct) : Math.round(window.innerWidth * pct)
-        const h = isLinux ? sh : window.innerHeight
-        const x = sidebarPosition === 'left' ? 0 : isLinux ? sw - w : window.innerWidth - w
-        setCameraWidth(w)
-        setCameraHeight(h)
-        setCameraX(x)
-        setCameraY(0)
-        if (isLinux && window.electron) {
-          window.electron.ipcRenderer.send('resize-camera-window', w, h)
-          window.electron.ipcRenderer.send('move-camera-window', x, 0)
-        }
-        return
-      }
-      const size = SIZES[index]
-      if (!size) return
-      let w = size
-      let h = size
-      if (currentShape === 'vertical-rect') {
-        w = Math.round(size * (3 / 4))
-        h = size
-      } else if (currentShape === 'horizontal-rect') {
-        w = size
-        h = Math.round(size * (9 / 16))
-      }
-
-      //Aquiles_Bachira
-      const clamped = clampToViewport(w, h, sw, sh)
-      w = clamped.w
-      h = clamped.h
-
-      const hasBorder = index !== 4 && borderGradient !== 'none'
-      const totalW = hasBorder ? w + borderWidth * 2 : w
-      const totalH = hasBorder ? h + borderWidth * 2 : h
-      const clampedTotal = clampToViewport(totalW, totalH, sw, sh)
-
-      if (clampedTotal.w !== totalW || clampedTotal.h !== totalH) {
-        const inner = clampToViewport(totalW - borderWidth * 2, totalH - borderWidth * 2, sw, sh)
-        w = Math.max(120, inner.w)
-        h = Math.max(120, inner.h)
-      }
-
-      setCameraWidth(w)
-      setCameraHeight(h)
-
-      if (isLinux) {
-        //Aquiles_Bachira
-        const finalW = hasBorder ? w + borderWidth * 2 : w
-        const finalH = hasBorder ? h + borderWidth * 2 : h
-        const c = clampToViewport(finalW, finalH, sw, sh)
-        if (window.electron) {
-          window.electron.ipcRenderer.send('resize-camera-window', c.w, c.h)
-        }
-      } else {
-        setCameraX((prev) => Math.min(Math.max(0, prev), window.innerWidth - w))
-        setCameraY((prev) => Math.min(Math.max(0, prev), window.innerHeight - h))
-      }
-    },
-    [borderGradient, borderWidth, sidebarWidthPercentage, sidebarPosition]
-  )
-
-  useEffect(() => {
-    if (window.electron) {
-      window.electron.ipcRenderer.invoke('get-initial-state').then((state) => {
-        setIsMirrored(state.isMirrored)
-        setShape(state.shape)
-        setSizeIndex(state.sizeIndex)
-        setRounding(state.rounding)
-        setAlwaysOnTop(state.alwaysOnTop)
-        setPowerOn(state.isCameraOn)
-
-        if (state.x !== undefined) setCameraX(state.x)
-        if (state.y !== undefined) setCameraY(state.y)
-
-        if (state.borderGradient) {
-          setBorderGradient(state.borderGradient)
-          setPrevGradient(state.borderGradient)
-          setCurrentGradient(state.borderGradient)
-        }
-        if (state.isBorderAnimated !== undefined) {
-          setIsBorderAnimated(state.isBorderAnimated)
-        }
-        if (state.borderWidth !== undefined) setBorderWidth(state.borderWidth)
-        if (state.language) setLanguage(state.language)
-        if (state.sidebarWidthPercentage !== undefined)
-          setSidebarWidthPercentage(state.sidebarWidthPercentage as number)
-        if (state.sidebarPosition !== undefined) setSidebarPosition(state.sidebarPosition as string)
-
-        setInitialized(true)
+        const c = (cam.camera ?? {}) as Record<string, unknown>
+        useCameraStore.getState().patch({
+          selectedDeviceId: (c.selectedDeviceId as string) ?? '',
+          isMirrored: (c.isMirrored as boolean) ?? true,
+          shape: (c.shape as typeof camera.shape) ?? 'circle',
+          size: (c.size as typeof camera.size) ?? 'sm',
+          rounding: (c.rounding as number) ?? 24,
+          alwaysOnTop: (c.alwaysOnTop as boolean) ?? true,
+          opacity: (c.opacity as number) ?? 1,
+          border: (c.border as typeof camera.border) ?? {
+            gradient: 'none',
+            width: 4,
+            animated: false
+          },
+          language: (c.language as 'en' | 'pt') ?? 'en',
+          cameraScreenId: (c.cameraScreenId as string) ?? '',
+          sidebarWidthPercentage: (c.sidebarWidthPercentage as number) ?? 35,
+          sidebarPosition: (c.sidebarPosition as 'left' | 'right') ?? 'right',
+          powerOn: cam.isCameraOn ?? false,
+          initialized: true
+        })
+        if (c.x !== undefined) setCameraX(c.x as number)
+        if (c.y !== undefined) setCameraY(c.y as number)
       })
-    }
+      .catch((err) => console.error('[vyra] initial state load failed:', err))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
-    if (initialized) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      applySize(sizeIndex, shape)
-    }
-  }, [initialized, sizeIndex, shape, applySize, sidebarWidthPercentage, sidebarPosition])
+    if (!camera.initialized) return undefined
+    const raf = requestAnimationFrame(applySize)
+    return () => cancelAnimationFrame(raf)
+  }, [camera.initialized, applySize])
 
-  //Aquiles_Bachira
   useEffect(() => {
-    if (!initialized) return
     let timer: ReturnType<typeof setTimeout> | null = null
     const handleResize = (): void => {
       if (timer) clearTimeout(timer)
-      timer = setTimeout(() => applySize(sizeIndex, shape), 120)
+      timer = setTimeout(applySize, 120)
     }
     window.addEventListener('resize', handleResize)
     return () => {
       window.removeEventListener('resize', handleResize)
       if (timer) clearTimeout(timer)
     }
-  }, [initialized, sizeIndex, shape, applySize])
+  }, [applySize])
 
-  if (borderGradient !== currentGradient) {
-    setPrevGradient(currentGradient)
-    setCurrentGradient(borderGradient)
-    setFade(true)
-  }
+  const snapTo = useCallback(
+    (pos: SnapPosition) => {
+      ui.setSnapping(true)
+      const { x, y } = computeSnappedPosition(pos, cameraWidth, cameraHeight)
+      setCameraX(x)
+      setCameraY(y)
+      window.vyra?.syncCameraPosition(x, y)
+      if (isLinux) window.vyra?.moveCameraWindow(x, y)
+    },
+    [cameraWidth, cameraHeight, ui]
+  )
 
-  useEffect(() => {
-    if (!fade) return
-    const raf = requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        setFade(false)
-      })
-    })
-    return () => cancelAnimationFrame(raf)
-  }, [fade])
+  useCameraEvents({ snapTo, applySize })
 
+  // ── Drag handling ─────────────────────────────────────────────────────────
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
       isDragging.current = true
-      if (containerRef.current) {
-        containerRef.current.style.transition = 'none'
-      }
+      ui.setDragging(true)
+      if (containerRef.current) containerRef.current.style.transition = 'none'
       currentDragPos.current = { x: cameraX, y: cameraY }
-      if (isLinux) {
-        dragOffset.current = { x: e.clientX, y: e.clientY }
-      } else {
-        dragOffset.current = {
-          x: e.clientX - cameraX,
-          y: e.clientY - cameraY
-        }
-      }
+      dragOffset.current = isLinux
+        ? { x: e.clientX, y: e.clientY }
+        : { x: e.clientX - cameraX, y: e.clientY - cameraY }
     },
-    [cameraX, cameraY]
+    [cameraX, cameraY, ui]
   )
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent): void => {
       if (!isDragging.current) return
-
       if (isLinux) {
         const newX = e.screenX - dragOffset.current.x
         const newY = e.screenY - dragOffset.current.y
         currentDragPos.current = { x: newX, y: newY }
-        if (window.electron) {
-          window.electron.ipcRenderer.send('move-camera-window', newX, newY)
-        }
+        window.vyra?.moveCameraWindow(newX, newY)
       } else {
         const newX = Math.min(
           Math.max(0, e.clientX - dragOffset.current.x),
@@ -318,18 +275,14 @@ export function CameraPage(): React.JSX.Element {
     const handleMouseUp = (): void => {
       if (isDragging.current) {
         isDragging.current = false
+        ui.setDragging(false)
         if (!isLinux && containerRef.current) {
           containerRef.current.style.transition =
             'left 0.4s cubic-bezier(0.16, 1, 0.3, 1), top 0.4s cubic-bezier(0.16, 1, 0.3, 1), width 0.4s cubic-bezier(0.16, 1, 0.3, 1), height 0.4s cubic-bezier(0.16, 1, 0.3, 1), border-radius 0.4s cubic-bezier(0.16, 1, 0.3, 1), padding 0.3s ease'
         }
         setCameraX(currentDragPos.current.x)
         setCameraY(currentDragPos.current.y)
-        if (window.electron) {
-          window.electron.ipcRenderer.send('sync-tray', {
-            x: currentDragPos.current.x,
-            y: currentDragPos.current.y
-          })
-        }
+        window.vyra?.syncCameraPosition(currentDragPos.current.x, currentDragPos.current.y)
       }
     }
     window.addEventListener('mousemove', handleMouseMove)
@@ -338,222 +291,109 @@ export function CameraPage(): React.JSX.Element {
       window.removeEventListener('mousemove', handleMouseMove)
       window.removeEventListener('mouseup', handleMouseUp)
     }
-  }, [cameraX, cameraY, cameraWidth, cameraHeight])
+  }, [cameraWidth, cameraHeight, ui])
 
-  useTrayEvents({
-    setSelectedDeviceId,
-    setShape,
-    setIsMirrored,
-    setSizeIndex,
-    setRounding,
-    setAlwaysOnTop,
-    setPowerOn,
-    setBorderGradient,
-    setBorderWidth,
-    setIsBorderAnimated,
-    setLanguage,
-    setSidebarWidthPercentage,
-    setSidebarPosition,
-    applySize,
-    sizeIndex,
-    shape
-  })
-
+  // ── Screenshot capture of the camera frame ────────────────────────────────
   useEffect(() => {
-    const ipc = window.electron?.ipcRenderer
-    if (!ipc) return
-    const handlePermissionDenied = (
-      _e: unknown,
-      payload: { screen: boolean; mic: boolean }
-    ): void => {
-      setScreenPermissionDenied(payload.screen)
-      setMicPermissionDenied(payload.mic)
-    }
-    const handleCameraPosition = (_e: unknown, pos: string): void => {
-      const sw = getScreenWidth()
-      const sh = getScreenHeight()
-      let newX = cameraX
-      let newY = cameraY
-      switch (pos) {
-        case 'top-left':
-          newX = 0
-          newY = 0
-          break
-        case 'top-right':
-          newX = sw - cameraWidth
-          newY = 0
-          break
-        case 'bottom-left':
-          newX = 0
-          newY = sh - cameraHeight
-          break
-        case 'bottom-right':
-          newX = sw - cameraWidth
-          newY = sh - cameraHeight
-          break
-        case 'left-middle':
-          newX = 0
-          newY = (sh - cameraHeight) / 2
-          break
-        case 'right-middle':
-          newX = sw - cameraWidth
-          newY = (sh - cameraHeight) / 2
-          break
-        case 'center':
-          newX = (sw - cameraWidth) / 2
-          newY = (sh - cameraHeight) / 2
-          break
+    const off = window.vyra?.on('vyra-capture-camera-frame', () => {
+      const video = videoRef.current
+      if (!video || !video.videoWidth) return
+      try {
+        const canvas = document.createElement('canvas')
+        canvas.width = video.videoWidth
+        canvas.height = video.videoHeight
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return
+        if (camera.isMirrored) {
+          ctx.translate(canvas.width, 0)
+          ctx.scale(-1, 1)
+        }
+        ctx.drawImage(video, 0, 0)
+        const dataUrl = canvas.toDataURL('image/png')
+        void window.vyra?.screenshotSaveCameraFrame(dataUrl)
+      } catch (err) {
+        console.error('[vyra] camera frame capture failed:', err)
       }
-      setCameraX(newX)
-      setCameraY(newY)
-      if (isLinux && window.electron) {
-        window.electron.ipcRenderer.send('move-camera-window', newX, newY)
-      }
-      if (window.electron) {
-        window.electron.ipcRenderer.send('sync-tray', { x: newX, y: newY })
-      }
-    }
-    const handleScreenChanged = (): void => {
-      applySize(sizeIndex, shape)
-    }
-    ipc.on('recording-permission-denied', handlePermissionDenied)
-    ipc.on('set-camera-position', handleCameraPosition)
-    ipc.on('screen-changed', handleScreenChanged)
-    return () => {
-      ipc.removeAllListeners('recording-permission-denied')
-      ipc.removeAllListeners('set-camera-position')
-      ipc.removeAllListeners('screen-changed')
-    }
-  }, [cameraX, cameraY, cameraWidth, cameraHeight, applySize, sizeIndex, shape])
+    })
+    return off
+  }, [camera.isMirrored, videoRef])
 
-  useEffect(() => {
-    const ipc = window.electron?.ipcRenderer
-    if (!ipc) return
-    const handleRecordingError = (
-      _e: unknown,
-      payload: { code: string; message?: string; stderr?: string }
-    ): void => {
-      setRecordingError({ code: payload.code, message: payload.message, stderr: payload.stderr })
-    }
-    const handleRecordingStarted = (): void => {
-      setRecordingError(null)
-    }
-    ipc.on('recording-error', handleRecordingError)
-    ipc.on('recording-started', handleRecordingStarted)
-    return () => {
-      ipc.removeAllListeners('recording-error')
-      ipc.removeAllListeners('recording-started')
-    }
-  }, [])
+  const handleDetectionRetry = useCallback((): void => {
+    refreshDevices()
+    setStreamRetryNonce((n) => n + 1)
+  }, [refreshDevices])
 
-  useEffect(() => {
-    if (window.electron && initialized) {
-      window.electron.ipcRenderer.send('sync-tray', {
-        devices: devices.map((d) => ({ deviceId: d.deviceId, label: d.label })),
-        selectedDeviceId,
-        isMirrored,
-        shape,
-        borderGradient,
-        borderWidth,
-        isBorderAnimated,
-        sizeIndex,
-        rounding,
-        alwaysOnTop
-      })
-    }
-  }, [
-    devices,
-    selectedDeviceId,
-    isMirrored,
-    shape,
-    borderGradient,
-    borderWidth,
-    isBorderAnimated,
-    sizeIndex,
-    rounding,
-    alwaysOnTop,
-    initialized
-  ])
+  if (!camera.initialized) return <div className="app-container" />
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent): void => {
-      if (e.key === '1') {
-        setSizeIndex(0)
-        applySize(0, shape)
-      }
-      if (e.key === '2') {
-        setSizeIndex(1)
-        applySize(1, shape)
-      }
-      if (e.key === '3') {
-        setSizeIndex(2)
-        applySize(2, shape)
-      }
-      if (e.key === '4') {
-        setSizeIndex(3)
-        applySize(3, shape)
-      }
-      if (e.key === '5') {
-        setSizeIndex(4)
-        applySize(4, shape)
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [applySize, shape])
+  const isFullscreen = camera.size === 'fullscreen'
+  const hasBorder = camera.border.gradient !== 'none' && !isFullscreen
+  const radius = isFullscreen
+    ? '0'
+    : camera.shape === 'circle'
+      ? '50%'
+      : camera.shape === 'pill'
+        ? '999px'
+        : `${camera.rounding}px`
 
-  if (!initialized) return <div className="app-container" />
-
-  const computedRadius = sizeIndex === 4 ? '0' : shape === 'circle' ? '50%' : `${rounding}px`
-
-  if (isLinux) {
-    return (
-      <div
-        ref={containerRef}
-        className="app-container"
-        onMouseDown={handleMouseDown}
-        style={{
-          width: '100%',
-          height: '100%',
-          maxWidth: '92vw',
-          maxHeight: '88vh',
-          pointerEvents: 'auto',
-          padding: sizeIndex === 4 || borderGradient === 'none' ? '0px' : `${borderWidth}px`,
-          borderRadius: computedRadius,
-          overflow: 'hidden',
-          boxSizing: 'border-box',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          opacity: powerOn ? 1 : 0,
-          transition: 'opacity 0.3s ease',
-          zIndex: 1
-        }}
-      >
+  const bubble = (
+    <div
+      ref={containerRef}
+      className="app-container"
+      onMouseDown={handleMouseDown}
+      onMouseEnter={() => {
+        if (!isLinux && window.vyra && !isDragging.current) {
+          window.vyra.setIgnoreMouseEvents(false)
+        }
+      }}
+      onMouseLeave={() => {
+        if (!isLinux && window.vyra && !isDragging.current) {
+          window.vyra.setIgnoreMouseEvents(true, { forward: true })
+        }
+      }}
+      style={{
+        position: isFullscreen || isLinux ? 'relative' : 'absolute',
+        left: isFullscreen || isLinux ? 0 : `${cameraX}px`,
+        top: isFullscreen || isLinux ? 0 : `${cameraY}px`,
+        width: isLinux ? '100%' : `min(${cameraWidth}px, 92vw)`,
+        height: isLinux ? '100%' : `min(${cameraHeight}px, 88vh)`,
+        maxWidth: '92vw',
+        maxHeight: '88vh',
+        pointerEvents: 'auto',
+        padding: hasBorder ? `${camera.border.width}px` : '0px',
+        borderRadius: radius,
+        overflow: 'hidden',
+        boxSizing: 'border-box',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: camera.powerOn ? camera.opacity : 0,
+        transition: ui.isDragging
+          ? 'opacity 0.3s ease'
+          : 'opacity 0.3s ease, left 0.4s cubic-bezier(0.16, 1, 0.3, 1), top 0.4s cubic-bezier(0.16, 1, 0.3, 1), width 0.4s cubic-bezier(0.16, 1, 0.3, 1), height 0.4s cubic-bezier(0.16, 1, 0.3, 1), border-radius 0.4s cubic-bezier(0.16, 1, 0.3, 1), padding 0.3s ease',
+        zIndex: 1
+      }}
+    >
+      {hasBorder && (
         <div
           style={{
             position: 'absolute',
             inset: 0,
-            background: getGradient(prevGradient, isBorderAnimated),
+            background: getGradient(camera.border.gradient, camera.border.animated),
             borderRadius: 'inherit',
-            opacity: fade || currentGradient !== 'none' ? 1 : 0,
-            transition: fade ? 'none' : 'opacity 0.4s ease',
-            animation: isBorderAnimated ? 'spinBorder 20s linear infinite' : 'none',
-            zIndex: -2
-          }}
-        />
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            background: getGradient(currentGradient, isBorderAnimated),
-            borderRadius: 'inherit',
-            opacity: fade ? 0 : 1,
-            transition: fade ? 'none' : 'opacity 0.4s ease',
-            animation: isBorderAnimated ? 'spinBorder 20s linear infinite' : 'none',
+            animation: camera.border.animated ? 'spinBorder 20s linear infinite' : 'none',
             zIndex: -1
           }}
         />
+      )}
+      <div
+        ref={videoWrapRef}
+        style={{
+          position: 'absolute',
+          inset: hasBorder ? `${camera.border.width}px` : 0,
+          borderRadius: camera.shape === 'circle' ? '50%' : radius,
+          overflow: 'hidden'
+        }}
+      >
         <video
           ref={videoRef}
           autoPlay
@@ -564,143 +404,46 @@ export function CameraPage(): React.JSX.Element {
             width: '100%',
             height: '100%',
             objectFit: 'cover',
-            borderRadius:
-              sizeIndex === 4
-                ? '0'
-                : shape === 'circle'
-                  ? '50%'
-                  : `${Math.max(0, rounding - borderWidth)}px`,
-            transform: isMirrored ? 'scaleX(-1)' : 'scaleX(1)',
+            transform: camera.isMirrored ? 'scaleX(-1)' : 'scaleX(1)',
             display: hasPermissionError ? 'none' : 'block'
           }}
         />
-        {hasPermissionError && (
-          <PermissionErrorOverlay language={language} onRetry={handleDetectionRetry} />
-        )}
-        {screenPermissionDenied && !hasPermissionError && (
-          <ScreenPermissionErrorOverlay language={language} />
-        )}
-        {micPermissionDenied && !hasPermissionError && !screenPermissionDenied && (
-          <MicPermissionErrorOverlay language={language} />
-        )}
-        {recordingError &&
-          !hasPermissionError &&
-          !screenPermissionDenied &&
-          !micPermissionDenied && (
-            <RecordingErrorOverlay
-              code={recordingError.code}
-              message={recordingError.message}
-              stderr={recordingError.stderr}
-              language={language}
-              onDismiss={() => setRecordingError(null)}
-            />
-          )}
+        {camera.powerOn && !hasPermissionError && <CameraHud />}
       </div>
-    )
+      {hasPermissionError && (
+        <PermissionErrorOverlay language={camera.language} onRetry={handleDetectionRetry} />
+      )}
+      {ui.screenPermissionDenied && !hasPermissionError && (
+        <ScreenPermissionErrorOverlay language={camera.language} />
+      )}
+      {ui.micPermissionDenied && !hasPermissionError && !ui.screenPermissionDenied && (
+        <MicPermissionErrorOverlay language={camera.language} />
+      )}
+      {ui.recordingError &&
+        !hasPermissionError &&
+        !ui.screenPermissionDenied &&
+        !ui.micPermissionDenied && (
+          <RecordingErrorOverlay
+            code={ui.recordingError.code}
+            message={ui.recordingError.message}
+            stderr={ui.recordingError.stderr}
+            language={camera.language}
+            onDismiss={() => ui.setRecordingError(null)}
+          />
+        )}
+    </div>
+  )
+
+  if (isLinux || isFullscreen) {
+    return <div style={{ width: '100vw', height: '100vh', position: 'relative' }}>{bubble}</div>
   }
 
   return (
     <div style={{ width: '100vw', height: '100vh', pointerEvents: 'none', position: 'relative' }}>
-      <div
-        ref={containerRef}
-        className="app-container"
-        onMouseDown={handleMouseDown}
-        onMouseEnter={() => {
-          if (!isLinux && window.electron && !isDragging.current) {
-            window.electron.ipcRenderer.send('set-ignore-mouse-events', false)
-          }
-        }}
-        onMouseLeave={() => {
-          if (!isLinux && window.electron && !isDragging.current) {
-            window.electron.ipcRenderer.send('set-ignore-mouse-events', true, { forward: true })
-          }
-        }}
-        style={{
-          position: 'absolute',
-          left: `${cameraX}px`,
-          top: `${cameraY}px`,
-          width: `min(${cameraWidth}px, 92vw)`,
-          height: `min(${cameraHeight}px, 88vh)`,
-          maxWidth: '92vw',
-          maxHeight: '88vh',
-          pointerEvents: 'auto',
-          padding: sizeIndex === 4 || borderGradient === 'none' ? '0px' : `${borderWidth}px`,
-          borderRadius: computedRadius,
-          overflow: 'hidden',
-          boxSizing: 'border-box',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          opacity: powerOn ? 1 : 0,
-          transition:
-            'opacity 0.3s ease, left 0.4s cubic-bezier(0.16, 1, 0.3, 1), top 0.4s cubic-bezier(0.16, 1, 0.3, 1), width 0.4s cubic-bezier(0.16, 1, 0.3, 1), height 0.4s cubic-bezier(0.16, 1, 0.3, 1), border-radius 0.4s cubic-bezier(0.16, 1, 0.3, 1), padding 0.3s ease',
-          zIndex: 1
-        }}
-      >
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            background: getGradient(prevGradient, isBorderAnimated),
-            borderRadius: 'inherit',
-            opacity: fade || currentGradient !== 'none' ? 1 : 0,
-            transition: fade ? 'none' : 'opacity 0.4s ease',
-            animation: isBorderAnimated ? 'spinBorder 20s linear infinite' : 'none',
-            zIndex: -2
-          }}
-        />
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            background: getGradient(currentGradient, isBorderAnimated),
-            borderRadius: 'inherit',
-            opacity: fade ? 0 : 1,
-            transition: fade ? 'none' : 'opacity 0.4s ease',
-            animation: isBorderAnimated ? 'spinBorder 20s linear infinite' : 'none',
-            zIndex: -1
-          }}
-        />
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted
-          className="camera-view"
-          style={{
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover',
-            borderRadius:
-              sizeIndex === 4
-                ? '0'
-                : shape === 'circle'
-                  ? '50%'
-                  : `${Math.max(0, rounding - borderWidth)}px`,
-            transform: isMirrored ? 'scaleX(-1)' : 'scaleX(1)',
-            display: hasPermissionError ? 'none' : 'block'
-          }}
-        />
-        {hasPermissionError && (
-          <PermissionErrorOverlay language={language} onRetry={handleDetectionRetry} />
-        )}
-        {screenPermissionDenied && !hasPermissionError && (
-          <ScreenPermissionErrorOverlay language={language} />
-        )}
-        {micPermissionDenied && !hasPermissionError && !screenPermissionDenied && (
-          <MicPermissionErrorOverlay language={language} />
-        )}
-        {recordingError &&
-          !hasPermissionError &&
-          !screenPermissionDenied &&
-          !micPermissionDenied && (
-            <RecordingErrorOverlay
-              code={recordingError.code}
-              language={language}
-              onDismiss={() => setRecordingError(null)}
-            />
-          )}
-      </div>
+      {bubble}
     </div>
   )
 }
+
+// Keep selectedDeviceId setter referenced (device switching flows through the store)
+void useCameraStore.getState().patch

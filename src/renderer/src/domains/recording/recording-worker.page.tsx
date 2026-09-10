@@ -1,3 +1,8 @@
+/**
+ * VYRA Studio — hidden recording worker page.
+ * Captures screen (+camera PiP, +audio mix) and streams webm chunks to main.
+ */
+
 import React, { useEffect } from 'react'
 import { useScreenRecorder } from './hooks/use-screen-recorder'
 
@@ -5,10 +10,10 @@ export function RecordingWorkerPage(): React.JSX.Element {
   const { screenPermissionDenied, micPermissionDenied } = useScreenRecorder()
 
   useEffect(() => {
-    const ipc = window.electron?.ipcRenderer
-    if (!ipc) return
+    const vyra = window.vyra
+    if (!vyra) return
     if (screenPermissionDenied || micPermissionDenied) {
-      ipc.send('recording-permission-denied', {
+      vyra.recordingPermissionDenied({
         screen: screenPermissionDenied,
         mic: micPermissionDenied
       })
@@ -17,8 +22,7 @@ export function RecordingWorkerPage(): React.JSX.Element {
 
   return (
     <div style={{ display: 'none' }}>
-      <h1>Recording Worker</h1>
-      <p>This hidden window handles screen recording to avoid animation stuttering.</p>
+      <h1>VYRA Recording Worker</h1>
     </div>
   )
 }
