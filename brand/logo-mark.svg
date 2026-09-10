@@ -1,0 +1,17 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="vyraV2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#C6CAD1"/>
+    </linearGradient>
+    <radialGradient id="vyraLens2" cx="0.35" cy="0.3" r="1">
+      <stop offset="0" stop-color="#FFE566"/>
+      <stop offset="0.65" stop-color="#FFDB00"/>
+      <stop offset="1" stop-color="#E8B900"/>
+    </radialGradient>
+  </defs>
+  <path d="M120 96 L256 396 L392 96" fill="none" stroke="url(#vyraV2)" stroke-width="64" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/>
+  <circle cx="256" cy="316" r="70" fill="url(#vyraLens2)"/>
+  <circle cx="256" cy="316" r="30" fill="#0A0B0D"/>
+  <circle cx="234" cy="294" r="15" fill="#FFFFFF" opacity="0.5"/>
+</svg>

@@ -1,0 +1,33 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="vyraV" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.55" stop-color="#E8EAED"/>
+      <stop offset="1" stop-color="#B9BEC7"/>
+    </linearGradient>
+    <radialGradient id="vyraBg" cx="0.3" cy="0.22" r="1.1">
+      <stop offset="0" stop-color="#17181B"/>
+      <stop offset="1" stop-color="#0A0B0D"/>
+    </radialGradient>
+    <radialGradient id="vyraLens" cx="0.35" cy="0.3" r="1">
+      <stop offset="0" stop-color="#FFE566"/>
+      <stop offset="0.65" stop-color="#FFDB00"/>
+      <stop offset="1" stop-color="#E8B900"/>
+    </radialGradient>
+    <linearGradient id="vyraGloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.35"/>
+      <stop offset="0.4" stop-color="#FFFFFF" stop-opacity="0.05"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#vyraBg)"/>
+  <rect x="1.5" y="1.5" width="509" height="509" rx="110.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.06" stroke-width="3"/>
+  <path d="M118 116 L256 388 L394 116" fill="none" stroke="url(#vyraV)" stroke-width="58" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="256" cy="300" r="64" fill="#0A0B0D"/>
+  <circle cx="256" cy="300" r="60" fill="url(#vyraLens)"/>
+  <circle cx="256" cy="300" r="26" fill="#0A0B0D"/>
+  <circle cx="238" cy="280" r="14" fill="#FFFFFF" opacity="0.55"/>
+  <path d="M118 116 L256 388 L394 116" fill="none" stroke="url(#vyraGloss)" stroke-width="58" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="150" y1="352" x2="196" y2="352" stroke="#3E6FE0" stroke-width="12" stroke-linecap="round" opacity="0.85"/>
+  <line x1="330" y1="404" x2="362" y2="404" stroke="#1E3799" stroke-width="10" stroke-linecap="round" opacity="0.85"/>
+</svg>
