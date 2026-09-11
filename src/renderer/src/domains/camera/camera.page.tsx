@@ -135,6 +135,20 @@ export function CameraPage(): React.JSX.Element {
   const currentDragPos = useRef({ x: 0, y: 0 })
   const containerRef = useRef<HTMLDivElement>(null)
   const videoWrapRef = useRef<HTMLDivElement>(null)
+  // Fullscreen click-through overlay: the window swallows every click while
+  // mouse capture is on, so track the state and always force it back off.
+  const captureRef = useRef(false)
+
+  const setCapture = useCallback((on: boolean) => {
+    if (isLinux || !window.vyra) return
+    if (captureRef.current === on) return
+    captureRef.current = on
+    if (on) {
+      window.vyra.setIgnoreMouseEvents(false)
+    } else {
+      window.vyra.setIgnoreMouseEvents(true, { forward: true })
+    }
+  }, [])
 
   // Notify main about detected devices
   useEffect(() => {
@@ -248,6 +262,35 @@ export function CameraPage(): React.JSX.Element {
     [cameraX, cameraY, ui]
   )
 
+  // Safety net: while capturing, the window receives every mousemove.
+  // If the cursor is outside the bubble, click-through must be back on —
+  // this heals any missed mouseleave (fast moves, drags, forward:true quirks).
+  useEffect(() => {
+    const handleCaptureGuard = (e: MouseEvent): void => {
+      if (!captureRef.current || isDragging.current) return
+      const el = containerRef.current
+      if (!el) {
+        setCapture(false)
+        return
+      }
+      const r = el.getBoundingClientRect()
+      const margin = 4
+      const inside =
+        e.clientX >= r.left - margin &&
+        e.clientX <= r.right + margin &&
+        e.clientY >= r.top - margin &&
+        e.clientY <= r.bottom + margin
+      if (!inside) setCapture(false)
+    }
+    window.addEventListener('mousemove', handleCaptureGuard, true)
+    return () => window.removeEventListener('mousemove', handleCaptureGuard, true)
+  }, [setCapture])
+
+  // Never hold mouse capture while the bubble is invisible (camera off).
+  useEffect(() => {
+    if (!camera.powerOn) setCapture(false)
+  }, [camera.powerOn, setCapture])
+
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent): void => {
       if (!isDragging.current) return
@@ -341,14 +384,11 @@ export function CameraPage(): React.JSX.Element {
       className="app-container"
       onMouseDown={handleMouseDown}
       onMouseEnter={() => {
-        if (!isLinux && window.vyra && !isDragging.current) {
-          window.vyra.setIgnoreMouseEvents(false)
-        }
+        // Invisible bubble must never steal clicks from other apps.
+        if (!isDragging.current && camera.powerOn) setCapture(true)
       }}
       onMouseLeave={() => {
-        if (!isLinux && window.vyra && !isDragging.current) {
-          window.vyra.setIgnoreMouseEvents(true, { forward: true })
-        }
+        if (!isDragging.current) setCapture(false)
       }}
       style={{
         position: isFullscreen || isLinux ? 'relative' : 'absolute',

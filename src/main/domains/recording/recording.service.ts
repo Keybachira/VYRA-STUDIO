@@ -123,10 +123,12 @@ export function setupRecordingIPC(): void {
       event,
       {
         encoder,
-        resolution
+        resolution,
+        fps
       }: {
         encoder?: string
         resolution?: string
+        fps?: string | number
         systemAudioVolume?: number
         microphoneAudioVolume?: number
       } = {}
@@ -155,8 +157,19 @@ export function setupRecordingIPC(): void {
       const resolvedEncoder = encoder || (isMac ? 'h264_videotoolbox' : 'libx264')
       const dims = RESOLUTION_DIMENSIONS[resolution || '1080p'] ?? RESOLUTION_DIMENSIONS['1080p']
       const targetBitrate = RESOLUTION_BITRATES[resolution || '1080p'] ?? 8000
+      // WebM chunks from MediaRecorder/VP9 carry no reliable framerate (ffmpeg
+      // guesses 1000fps → "Current frame rate is unsupported" on h264_qsv).
+      // Force a constant frame rate end-to-end.
+      const parsedFps = Math.min(60, Math.max(15, parseInt(String(fps ?? '30'), 10) || 30))
+      const isHardwareEncoder =
+        resolvedEncoder === 'h264_qsv' ||
+        resolvedEncoder === 'h264_nvenc' ||
+        resolvedEncoder === 'h264_amf' ||
+        resolvedEncoder === 'h264_videotoolbox'
+      // Hardware encoders require nv12; yuv420p breaks QSV/NVENC/AMF.
+      const pixFmt = isHardwareEncoder ? 'nv12' : 'yuv420p'
 
-      const vf = `scale=${dims.width}:${dims.height}:force_original_aspect_ratio=decrease:flags=bilinear:out_color_matrix=bt709:out_range=tv,pad=ceil(iw/2)*2:ceil(ih/2)*2`
+      const vf = `fps=${parsedFps},scale=${dims.width}:${dims.height}:force_original_aspect_ratio=decrease:flags=bilinear:out_color_matrix=bt709:out_range=tv,pad=ceil(iw/2)*2:ceil(ih/2)*2,setsar=1`
 
       const outputOptions = [
         '-map 0:v:0',
@@ -165,12 +178,14 @@ export function setupRecordingIPC(): void {
         '-ac 2',
         '-f mov',
         '-movflags +faststart',
-        '-pix_fmt yuv420p',
+        `-pix_fmt ${pixFmt}`,
         '-color_primaries bt709',
         '-color_trc bt709',
         '-colorspace bt709',
         '-color_range tv',
         `-vf ${vf}`,
+        `-r ${parsedFps}`,
+        '-vsync cfr',
         `-b:v ${targetBitrate}k`,
         '-maxrate:v ' + Math.round(targetBitrate * 1.5) + 'k',
         '-bufsize:v ' + Math.round(targetBitrate * 2) + 'k'
@@ -189,6 +204,7 @@ export function setupRecordingIPC(): void {
       }
 
       ffmpegProcess = ffmpeg(recordingStream)
+        .inputOptions(['-probesize 32M', '-analyzeduration 20M', '-fflags +genpts'])
         .inputFormat('webm')
         .videoCodec(resolvedEncoder)
         .outputOptions(outputOptions)
