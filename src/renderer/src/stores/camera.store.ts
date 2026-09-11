@@ -5,6 +5,7 @@
 
 import { create } from 'zustand'
 import type { BorderConfig, CameraShape, CameraSize } from '../../../shared/types'
+import { normalizeEffectId } from '../../../shared/effects'
 
 interface CameraStore {
   devices: { deviceId: string; label: string }[]
@@ -16,6 +17,7 @@ interface CameraStore {
   alwaysOnTop: boolean
   opacity: number
   border: BorderConfig
+  effect: string
   powerOn: boolean
   language: 'en' | 'pt'
   cameraScreenId: string
@@ -40,7 +42,8 @@ export const useCameraStore = create<CameraStore>((set, get) => ({
   rounding: 24,
   alwaysOnTop: true,
   opacity: 1,
-  border: { gradient: 'none', width: 4, animated: false },
+  border: { gradient: 'none', width: 4, animated: false, pulse: false },
+  effect: 'none',
   powerOn: false,
   language: 'en',
   cameraScreenId: '',
@@ -67,6 +70,7 @@ export const useCameraStore = create<CameraStore>((set, get) => ({
         alwaysOnTop: s.alwaysOnTop,
         opacity: s.opacity,
         border: s.border,
+        effect: s.effect,
         cameraScreenId: s.cameraScreenId,
         sidebarWidthPercentage: s.sidebarWidthPercentage,
         sidebarPosition: s.sidebarPosition
@@ -74,6 +78,16 @@ export const useCameraStore = create<CameraStore>((set, get) => ({
     }, 150)
   }
 }))
+
+function normalizeBorder(raw: unknown): BorderConfig {
+  const b = (raw ?? {}) as Partial<BorderConfig>
+  return {
+    gradient: typeof b.gradient === 'string' ? b.gradient : 'none',
+    width: typeof b.width === 'number' ? b.width : 4,
+    animated: typeof b.animated === 'boolean' ? b.animated : false,
+    pulse: typeof b.pulse === 'boolean' ? b.pulse : false
+  }
+}
 
 /** Apply a settings snapshot from main into the store. */
 export function hydrateCameraStore(state: {
@@ -89,7 +103,8 @@ export function hydrateCameraStore(state: {
     rounding: (cam.rounding as number) ?? 24,
     alwaysOnTop: (cam.alwaysOnTop as boolean) ?? true,
     opacity: (cam.opacity as number) ?? 1,
-    border: (cam.border as BorderConfig) ?? { gradient: 'none', width: 4, animated: false },
+    border: normalizeBorder(cam.border),
+    effect: normalizeEffectId(cam.effect),
     powerOn: state.isCameraOn ?? false,
     language: (cam.language as 'en' | 'pt') ?? 'en',
     cameraScreenId: (cam.cameraScreenId as string) ?? '',

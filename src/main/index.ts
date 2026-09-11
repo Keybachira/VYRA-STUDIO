@@ -38,6 +38,12 @@ import {
   listPresets,
   updatePreset
 } from './domains/presets/preset.service'
+import {
+  applySceneById,
+  createScene,
+  deleteScene,
+  syncSceneForPreset
+} from './domains/scenes/scene.service'
 import { loadSettings, saveSettings, settings } from './domains/settings/settings.service'
 import {
   reRegisterGlobalShortcuts,
@@ -128,6 +134,17 @@ function toggleMicMute(): void {
 
 function applyPreset(id: string): void {
   if (applyPresetById(id)) {
+    syncSceneForPreset(id)
+    BrowserWindow.getAllWindows().forEach((win) => {
+      win.webContents.send('sync-camera', { ...settings.camera })
+      win.webContents.send('set-camera-position', snapPositionFromPreset())
+    })
+    updateTray()
+  }
+}
+
+function applyScene(id: string): void {
+  if (applySceneById(id)) {
     BrowserWindow.getAllWindows().forEach((win) => {
       win.webContents.send('sync-camera', { ...settings.camera })
       win.webContents.send('set-camera-position', snapPositionFromPreset())
@@ -195,6 +212,14 @@ function handleAction(action: ShortcutAction): void {
       const idx = action === 'preset1' ? 0 : action === 'preset2' ? 1 : 2
       const preset = listPresets()[idx]
       if (preset) applyPreset(preset.id)
+      break
+    }
+    case 'scene1':
+    case 'scene2':
+    case 'scene3': {
+      const idx = action === 'scene1' ? 0 : action === 'scene2' ? 1 : 2
+      const scene = settings.scenes[idx]
+      if (scene) applyScene(scene.id)
       break
     }
     case 'topLeft':
@@ -335,6 +360,7 @@ app.whenReady().then(() => {
     screenshot: takeScreenshot,
     toggleMicMute,
     applyPreset,
+    applyScene,
     openPalette: togglePaletteWindow
   })
   setShortcutHandler(handleShortcutAction)
@@ -457,6 +483,7 @@ app.whenReady().then(() => {
       'alwaysOnTop',
       'opacity',
       'border',
+      'effect',
       'language',
       'cameraScreenId',
       'recordingScreenId',
@@ -596,6 +623,11 @@ app.whenReady().then(() => {
     const preset = createPreset({ name })
     applyPreset(preset.id)
   })
+
+  // Scenes from settings page / tray / palette
+  ipcMain.handle('scenes-create', (_, name: string) => createScene(name))
+  ipcMain.handle('scenes-delete', (_, id: string) => deleteScene(id))
+  ipcMain.on('scenes-apply', (_, id: string) => applyScene(id))
 
   // Devices reported by the camera renderer
   ipcMain.on('sync-devices', (_, devices) => {

@@ -40,6 +40,9 @@ declare global {
       presetsDelete(id: string): Promise<boolean>
       presetsApply(id: string): void
       presetsCapture(name: string): void
+      scenesCreate(name: string): Promise<unknown>
+      scenesDelete(id: string): Promise<boolean>
+      scenesApply(id: string): void
       paletteRunAction(action: string): void
       paletteApplyPreset(id: string): void
       closePalette(): void

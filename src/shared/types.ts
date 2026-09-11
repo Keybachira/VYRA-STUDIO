@@ -33,9 +33,18 @@ export interface BorderConfig {
   gradient: string
   width: number
   animated: boolean
+  /** VYRA Pulse: border glow follows the microphone level. */
+  pulse: boolean
 }
 
 // ── Presets ─────────────────────────────────────────────────────────────────
+
+export interface Scene {
+  id: string
+  name: string
+  presetId: string
+  builtin?: boolean
+}
 
 export interface CameraPreset {
   id: string
@@ -47,6 +56,8 @@ export interface CameraPreset {
   opacity: number
   border: BorderConfig
   mirror: boolean
+  /** Real-time video effect id (see shared/effects). */
+  effect: string
   builtin?: boolean
 }
 
@@ -94,6 +105,9 @@ export type ShortcutAction =
   | 'preset1'
   | 'preset2'
   | 'preset3'
+  | 'scene1'
+  | 'scene2'
+  | 'scene3'
   | 'topLeft'
   | 'topRight'
   | 'leftMiddle'
@@ -118,6 +132,8 @@ export interface CameraRuntimeState {
   alwaysOnTop: boolean
   opacity: number
   border: BorderConfig
+  /** Real-time video effect id (see shared/effects). */
+  effect: string
   language: AppLanguage
   cameraScreenId: string
   recordingScreenId: string
@@ -138,6 +154,8 @@ export interface AppSettings {
   shortcuts: ShortcutMap
   presets: CameraPreset[]
   activePresetId: string
+  scenes: Scene[]
+  activeSceneId: string
 }
 
 // ── IPC payloads ────────────────────────────────────────────────────────────

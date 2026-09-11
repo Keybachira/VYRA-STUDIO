@@ -61,7 +61,8 @@ describe('migrateLegacySettings', () => {
     expect(migrated!.state.border).toEqual({
       gradient: 'gradient_01',
       width: 6,
-      animated: true
+      animated: true,
+      pulse: false
     })
   })
 
@@ -81,8 +82,9 @@ describe('normalizePresets', () => {
       position: 'center',
       rounding: 10,
       opacity: 0.5,
-      border: { gradient: 'gold', width: 2, animated: false },
-      mirror: false
+      border: { gradient: 'gold', width: 2, animated: false, pulse: true },
+      mirror: false,
+      effect: 'gaming'
     }
     const result = normalizePresets([valid, null, { id: 'x' }, 42, 'nope'])
     expect(result).toHaveLength(1)
@@ -96,7 +98,15 @@ describe('normalizePresets', () => {
     expect(result[0].rounding).toBe(24)
     expect(result[0].opacity).toBe(1)
     expect(result[0].mirror).toBe(true)
-    expect(result[0].border).toEqual({ gradient: 'none', width: 4, animated: false })
+    expect(result[0].border).toEqual({ gradient: 'none', width: 4, animated: false, pulse: false })
+    expect(result[0].effect).toBe('none')
+  })
+
+  it('normalizes unknown effect ids to none', () => {
+    const result = normalizePresets([
+      { id: 'p', name: 'P', shape: 'rect', size: 'md', position: 'center', effect: 'nope' }
+    ])
+    expect(result[0].effect).toBe('none')
   })
 
   it('returns empty for non-arrays', () => {

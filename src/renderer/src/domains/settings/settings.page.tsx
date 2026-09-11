@@ -11,6 +11,7 @@ import {
   FolderOpen,
   Info,
   Keyboard,
+  Layers,
   LayoutTemplate,
   Mic,
   Monitor,
@@ -21,6 +22,7 @@ import {
 } from 'lucide-react'
 import { t } from '../../../../shared/i18n'
 import { GRADIENTS } from '../../../../shared/colors'
+import { CAMERA_EFFECTS } from '../../../../shared/effects'
 import { SHORTCUT_DEFINITIONS } from '../../../../shared/shortcuts'
 import type {
   AppSettings,
@@ -28,6 +30,7 @@ import type {
   CameraPreset,
   CameraShape,
   CameraSize,
+  Scene,
   ShortcutAction
 } from '../../../../shared/types'
 import { useCameraStore } from '../../stores/camera.store'
@@ -38,7 +41,15 @@ import { PillGroup } from './components/pill-group'
 import { SliderRow } from './components/slider-row'
 
 type Tab =
-  'general' | 'camera' | 'appearance' | 'recording' | 'audio' | 'shortcuts' | 'presets' | 'advanced'
+  | 'general'
+  | 'camera'
+  | 'appearance'
+  | 'recording'
+  | 'audio'
+  | 'shortcuts'
+  | 'presets'
+  | 'scenes'
+  | 'advanced'
 
 const TABS: { key: Tab; icon: React.ReactNode; labelKey: string }[] = [
   { key: 'general', icon: <SettingsIcon size={14} />, labelKey: 'settings.tab.general' },
@@ -48,6 +59,7 @@ const TABS: { key: Tab; icon: React.ReactNode; labelKey: string }[] = [
   { key: 'audio', icon: <Mic size={14} />, labelKey: 'settings.tab.audio' },
   { key: 'shortcuts', icon: <Keyboard size={14} />, labelKey: 'settings.tab.shortcuts' },
   { key: 'presets', icon: <LayoutTemplate size={14} />, labelKey: 'settings.tab.presets' },
+  { key: 'scenes', icon: <Layers size={14} />, labelKey: 'settings.tab.scenes' },
   { key: 'advanced', icon: <Info size={14} />, labelKey: 'settings.tab.advanced' }
 ]
 
@@ -106,6 +118,7 @@ export function SettingsPage(): React.JSX.Element {
           ...(cam.rounding !== undefined ? { rounding: cam.rounding as number } : {}),
           ...(cam.opacity !== undefined ? { opacity: cam.opacity as number } : {}),
           ...(cam.border !== undefined ? { border: cam.border as BorderConfig } : {}),
+          ...(cam.effect !== undefined ? { effect: cam.effect as string } : {}),
           ...(cam.language !== undefined ? { language: cam.language as 'en' | 'pt' } : {}),
           ...(cam.alwaysOnTop !== undefined ? { alwaysOnTop: cam.alwaysOnTop as boolean } : {})
         })
@@ -181,6 +194,7 @@ export function SettingsPage(): React.JSX.Element {
         {tab === 'presets' && (
           <PresetsTab language={language} presets={presets} refresh={refreshPresets} />
         )}
+        {tab === 'scenes' && <ScenesTab language={language} presets={presets} />}
         {tab === 'advanced' && <AdvancedTab language={language} />}
       </div>
     </div>
@@ -329,6 +343,18 @@ function AppearanceTab({
       />
 
       <div className="vyra-row vyra-row--column">
+        <span className="vyra-label">{t('settings.effects', language)}</span>
+        <PillGroup
+          options={CAMERA_EFFECTS.map((e) => ({
+            value: e.id,
+            label: t(`settings.effect.${e.id}`, language)
+          }))}
+          value={camera.effect}
+          onChange={(v) => commitCamera({ effect: v })}
+        />
+      </div>
+
+      <div className="vyra-row vyra-row--column">
         <span className="vyra-label">{t('settings.border', language)}</span>
         <PillGroup
           options={[
@@ -358,6 +384,11 @@ function AppearanceTab({
             />
           </div>
         )}
+        <Toggle
+          active={border.pulse}
+          onChange={(v) => commitCamera({ border: { ...border, pulse: v } })}
+          label={t('settings.border.pulse', language)}
+        />
       </div>
     </>
   )
@@ -617,7 +648,10 @@ function ShortcutsTab({ language }: { language: 'en' | 'pt' }): React.JSX.Elemen
   const renderRow = (def: (typeof SHORTCUT_DEFINITIONS)[number]): React.JSX.Element => (
     <div className="vyra-row" key={def.action}>
       <span className="vyra-label" style={{ fontSize: 13.5 }}>
-        {def.action.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase())}
+        {def.action
+          .replace(/([A-Z])/g, ' $1')
+          .replace(/([a-z])(\d)/g, '$1 $2')
+          .replace(/^./, (c) => c.toUpperCase())}
         {def.global && (
           <span style={{ fontSize: 10, color: 'var(--color-faint)', marginLeft: 8 }}>global</span>
         )}
@@ -748,6 +782,102 @@ function PresetsTab({
         </div>
       ))}
       <span className="vyra-hint">{t('settings.presets.builtinHint', language)}</span>
+    </>
+  )
+}
+
+function ScenesTab({
+  language,
+  presets
+}: {
+  language: 'en' | 'pt'
+  presets: CameraPreset[]
+}): React.JSX.Element {
+  const [scenes, setScenes] = useState<Scene[]>([])
+  const [activeId, setActiveId] = useState('')
+
+  const refresh = useCallback((): void => {
+    void window.vyra?.getInitialState().then((state) => {
+      const snap = state as unknown as AppSettings
+      setScenes(snap.scenes ?? [])
+      setActiveId(snap.activeSceneId ?? '')
+    })
+  }, [])
+
+  useEffect(() => {
+    refresh()
+  }, [refresh])
+
+  const presetName = (id: string): string =>
+    presets.find((p) => p.id === id)?.name ?? id
+
+  return (
+    <>
+      <span className="vyra-hint" style={{ marginBottom: 4 }}>
+        {t('settings.scenes.hint', language)}
+      </span>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button
+          className="vyra-btn vyra-btn--primary"
+          onClick={() => {
+            void window.vyra?.scenesCreate('My scene').then(refresh)
+          }}
+        >
+          <Sparkles size={13} />
+          {t('settings.scenes.new', language)}
+        </button>
+        <button
+          className="vyra-btn"
+          onClick={() => {
+            void window.vyra?.scenesCreate('Captured scene').then(refresh)
+          }}
+        >
+          {t('settings.scenes.capture', language)}
+        </button>
+      </div>
+
+      {scenes.map((s, i) => (
+        <div className="vyra-row" key={s.id}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+            <span className="vyra-label">
+              {s.name}
+              {s.builtin && (
+                <span style={{ fontSize: 10, color: 'var(--color-faint)', marginLeft: 8 }}>
+                  built-in
+                </span>
+              )}
+              {i < 3 && (
+                <kbd className="vyra-kbd" style={{ marginLeft: 8 }}>
+                  F{5 + i}
+                </kbd>
+              )}
+            </span>
+            <span className="vyra-hint">{presetName(s.presetId)}</span>
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+            <button
+              className={`vyra-pill ${activeId === s.id ? 'vyra-pill--active' : ''}`}
+              onClick={() => {
+                window.vyra?.scenesApply(s.id)
+                setActiveId(s.id)
+              }}
+            >
+              Apply
+            </button>
+            {!s.builtin && (
+              <button
+                className="vyra-pill vyra-btn--danger"
+                title={t('settings.scenes.delete', language)}
+                style={{ borderColor: 'rgba(255,69,58,0.4)', color: 'var(--color-danger)' }}
+                onClick={() => void window.vyra?.scenesDelete(s.id).then(refresh)}
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+      <span className="vyra-hint">{t('settings.scenes.builtinHint', language)}</span>
     </>
   )
 }

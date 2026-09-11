@@ -14,6 +14,7 @@ import type {
   CameraSize,
   SnapPosition
 } from '../../../../../shared/types'
+import { normalizeEffectId } from '../../../../../shared/effects'
 
 interface UseCameraEventsArgs {
   snapTo: (pos: SnapPosition) => void
@@ -45,6 +46,7 @@ export function useCameraEvents({ snapTo, applySize }: UseCameraEventsArgs): voi
           ...(c.alwaysOnTop !== undefined ? { alwaysOnTop: c.alwaysOnTop as boolean } : {}),
           ...(c.opacity !== undefined ? { opacity: c.opacity as number } : {}),
           ...(c.border !== undefined ? { border: c.border as BorderConfig } : {}),
+          ...(c.effect !== undefined ? { effect: normalizeEffectId(c.effect) } : {}),
           ...(c.language !== undefined ? { language: c.language as 'en' | 'pt' } : {}),
           ...(c.sidebarWidthPercentage !== undefined
             ? { sidebarWidthPercentage: c.sidebarWidthPercentage as number }

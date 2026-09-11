@@ -4,6 +4,7 @@
  */
 
 import type { CameraPreset, CameraRuntimeState } from './types'
+import { normalizeEffectId } from './effects'
 
 export const BUILTIN_PRESETS: Omit<CameraPreset, 'id'>[] & { id?: string }[] = []
 
@@ -16,8 +17,9 @@ export const defaultPresets: CameraPreset[] = [
     position: 'bottom-right',
     rounding: 24,
     opacity: 1,
-    border: { gradient: 'none', width: 4, animated: false },
+    border: { gradient: 'none', width: 4, animated: false, pulse: false },
     mirror: true,
+    effect: 'none',
     builtin: true
   },
   {
@@ -28,8 +30,9 @@ export const defaultPresets: CameraPreset[] = [
     position: 'bottom-right',
     rounding: 32,
     opacity: 1,
-    border: { gradient: 'gold', width: 4, animated: false },
+    border: { gradient: 'gold', width: 4, animated: false, pulse: false },
     mirror: true,
+    effect: 'studio',
     builtin: true
   },
   {
@@ -40,8 +43,9 @@ export const defaultPresets: CameraPreset[] = [
     position: 'top-right',
     rounding: 24,
     opacity: 1,
-    border: { gradient: 'silver', width: 4, animated: false },
+    border: { gradient: 'silver', width: 4, animated: false, pulse: false },
     mirror: true,
+    effect: 'natural',
     builtin: true
   },
   {
@@ -52,8 +56,9 @@ export const defaultPresets: CameraPreset[] = [
     position: 'bottom-left',
     rounding: 24,
     opacity: 1,
-    border: { gradient: 'gold', width: 6, animated: true },
+    border: { gradient: 'gold', width: 6, animated: true, pulse: true },
     mirror: true,
+    effect: 'gaming',
     builtin: true
   },
   {
@@ -64,8 +69,9 @@ export const defaultPresets: CameraPreset[] = [
     position: 'bottom-right',
     rounding: 24,
     opacity: 0.95,
-    border: { gradient: 'none', width: 2, animated: false },
+    border: { gradient: 'none', width: 2, animated: false, pulse: false },
     mirror: true,
+    effect: 'none',
     builtin: true
   }
 ]
@@ -123,7 +129,8 @@ export function migrateLegacySettings(data: {
       border: {
         gradient: (s.borderGradient as string) ?? 'none',
         width: (s.borderWidth as number) ?? 4,
-        animated: (s.isBorderAnimated as boolean) ?? false
+        animated: (s.isBorderAnimated as boolean) ?? false,
+        pulse: false
       }
     }
   }
@@ -149,10 +156,12 @@ export function normalizePresets(raw: unknown): CameraPreset[] {
       rounding: typeof p.rounding === 'number' ? p.rounding : 24,
       opacity: typeof p.opacity === 'number' ? p.opacity : 1,
       mirror: typeof p.mirror === 'boolean' ? p.mirror : true,
+      effect: normalizeEffectId(p.effect),
       border: {
         gradient: p.border?.gradient ?? 'none',
         width: typeof p.border?.width === 'number' ? p.border.width : 4,
-        animated: typeof p.border?.animated === 'boolean' ? p.border.animated : false
+        animated: typeof p.border?.animated === 'boolean' ? p.border.animated : false,
+        pulse: typeof p.border?.pulse === 'boolean' ? p.border.pulse : false
       }
     }))
 }
@@ -165,7 +174,8 @@ export const defaultCameraState: Omit<CameraRuntimeState, 'devices' | 'isRecordi
   rounding: 24,
   alwaysOnTop: true,
   opacity: 1,
-  border: { gradient: 'none', width: 4, animated: false },
+  border: { gradient: 'none', width: 4, animated: false, pulse: false },
+  effect: 'none',
   language: 'en',
   cameraScreenId: '',
   recordingScreenId: '',

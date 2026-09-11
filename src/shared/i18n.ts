@@ -18,6 +18,7 @@ const en: Record<string, string> = {
   'settings.tab.audio': 'Audio',
   'settings.tab.shortcuts': 'Shortcuts',
   'settings.tab.presets': 'Presets',
+  'settings.tab.scenes': 'Scenes',
   'settings.tab.advanced': 'Advanced',
 
   'settings.language': 'Language',
@@ -64,6 +65,21 @@ const en: Record<string, string> = {
   'settings.border.none': 'None',
   'settings.border.width': 'Border width',
   'settings.border.animated': 'Animate border',
+  'settings.border.pulse': 'Pulse with voice',
+
+  'settings.effects': 'Effects',
+  'settings.effect.none': 'None',
+  'settings.effect.natural': 'Natural',
+  'settings.effect.studio': 'Studio',
+  'settings.effect.cinematic': 'Cinematic',
+  'settings.effect.gaming': 'Gaming',
+  'settings.effect.bright': 'Bright',
+  'settings.effect.dark': 'Dark',
+  'settings.effect.bw': 'B&W',
+  'settings.effect.retro': 'Retro',
+  'settings.effect.neon': 'Neon',
+  'settings.effect.warm': 'Warm',
+  'settings.effect.cold': 'Cold',
 
   'settings.recording.resolution': 'Resolution',
   'settings.recording.fps': 'Framerate',
@@ -99,12 +115,19 @@ const en: Record<string, string> = {
   'settings.presets.builtinHint': 'Built-in presets cannot be deleted.',
   'settings.presets.capture': 'Capture current look as new preset',
 
+  'settings.scenes.new': 'New scene',
+  'settings.scenes.capture': 'Capture current look as new scene',
+  'settings.scenes.hint': 'Scenes switch the whole look instantly. Keys F5–F7 trigger the first three.',
+  'settings.scenes.delete': 'Delete',
+  'settings.scenes.builtinHint': 'Built-in scenes cannot be deleted.',
+
   'settings.advanced.openFolder': 'Open settings folder',
   'settings.advanced.omarchy': 'Omarchy integration',
   'settings.advanced.omarchy.desc':
     'Hyprland shortcuts, Waybar module and CLI are available in the docs. Run the installer from a terminal.',
   'settings.advanced.about': 'About VYRA',
 
+  'tray.scenes': 'Scenes',
   'tray.turnOn': 'Turn camera on',
   'tray.turnOff': 'Turn camera off',
   'tray.show': 'Show camera',
@@ -124,6 +147,7 @@ const en: Record<string, string> = {
   'palette.group.camera': 'Camera',
   'palette.group.recording': 'Recording',
   'palette.group.presets': 'Presets',
+  'palette.group.scenes': 'Scenes',
   'palette.group.app': 'App',
 
   'camera.error.title': 'Camera blocked',
@@ -174,6 +198,7 @@ const pt: Record<string, string> = {
   'settings.tab.audio': 'Áudio',
   'settings.tab.shortcuts': 'Atalhos',
   'settings.tab.presets': 'Presets',
+  'settings.tab.scenes': 'Cenas',
   'settings.tab.advanced': 'Avançado',
 
   'settings.language': 'Idioma',
@@ -220,6 +245,21 @@ const pt: Record<string, string> = {
   'settings.border.none': 'Nenhuma',
   'settings.border.width': 'Largura da borda',
   'settings.border.animated': 'Animar borda',
+  'settings.border.pulse': 'Pulsar com a voz',
+
+  'settings.effects': 'Efeitos',
+  'settings.effect.none': 'Nenhum',
+  'settings.effect.natural': 'Natural',
+  'settings.effect.studio': 'Estúdio',
+  'settings.effect.cinematic': 'Cinemático',
+  'settings.effect.gaming': 'Gaming',
+  'settings.effect.bright': 'Claro',
+  'settings.effect.dark': 'Escuro',
+  'settings.effect.bw': 'P&B',
+  'settings.effect.retro': 'Retrô',
+  'settings.effect.neon': 'Neon',
+  'settings.effect.warm': 'Quente',
+  'settings.effect.cold': 'Frio',
 
   'settings.recording.resolution': 'Resolução',
   'settings.recording.fps': 'Taxa de quadros',
@@ -255,12 +295,19 @@ const pt: Record<string, string> = {
   'settings.presets.builtinHint': 'Presets embutidos não podem ser excluídos.',
   'settings.presets.capture': 'Captar aparência atual como novo preset',
 
+  'settings.scenes.new': 'Nova cena',
+  'settings.scenes.capture': 'Captar aparência atual como nova cena',
+  'settings.scenes.hint': 'Cenas trocam o visual inteiro na hora. Teclas F5–F7 disparam as três primeiras.',
+  'settings.scenes.delete': 'Excluir',
+  'settings.scenes.builtinHint': 'Cenas embutidas não podem ser excluídas.',
+
   'settings.advanced.openFolder': 'Abrir pasta de configurações',
   'settings.advanced.omarchy': 'Integração Omarchy',
   'settings.advanced.omarchy.desc':
     'Atalhos do Hyprland, módulo Waybar e CLI estão na documentação. Rode o instalador pelo terminal.',
   'settings.advanced.about': 'Sobre o VYRA',
 
+  'tray.scenes': 'Cenas',
   'tray.turnOn': 'Ligar câmera',
   'tray.turnOff': 'Desligar câmera',
   'tray.show': 'Mostrar câmera',
@@ -280,6 +327,7 @@ const pt: Record<string, string> = {
   'palette.group.camera': 'Câmera',
   'palette.group.recording': 'Gravação',
   'palette.group.presets': 'Presets',
+  'palette.group.scenes': 'Cenas',
   'palette.group.app': 'App',
 
   'camera.error.title': 'Câmera bloqueada',

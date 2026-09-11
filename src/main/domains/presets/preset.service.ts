@@ -5,6 +5,7 @@
 
 import { settings, saveSettings } from '../settings/settings.service'
 import type { CameraPreset } from '../../../shared/types'
+import { normalizeEffectId } from '../../../shared/effects'
 
 export function listPresets(): CameraPreset[] {
   return settings.presets
@@ -24,6 +25,7 @@ export function applyPresetById(id: string): boolean {
   settings.camera.opacity = preset.opacity
   settings.camera.isMirrored = preset.mirror
   settings.camera.border = { ...preset.border }
+  settings.camera.effect = normalizeEffectId(preset.effect)
   saveSettings()
   return true
 }
@@ -39,6 +41,7 @@ export function createPreset(partial: Partial<CameraPreset>): CameraPreset {
     opacity: partial.opacity ?? settings.camera.opacity,
     border: partial.border ?? { ...settings.camera.border },
     mirror: partial.mirror ?? settings.camera.isMirrored ?? true,
+    effect: normalizeEffectId(partial.effect ?? settings.camera.effect),
     builtin: false
   }
   settings.presets.push(preset)
@@ -70,6 +73,11 @@ export function deletePreset(id: string): boolean {
   settings.presets = settings.presets.filter((p) => p.id !== id)
   if (settings.activePresetId === id) {
     settings.activePresetId = settings.presets[0]?.id ?? ''
+  }
+  // Cascade: scenes pointing at the deleted preset are removed.
+  settings.scenes = settings.scenes.filter((s) => s.presetId !== id)
+  if (!settings.scenes.some((s) => s.id === settings.activeSceneId)) {
+    settings.activeSceneId = settings.scenes[0]?.id ?? ''
   }
   saveSettings()
   return true

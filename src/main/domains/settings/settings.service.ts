@@ -14,6 +14,8 @@ import {
   migrateLegacySettings,
   normalizePresets
 } from '../../../shared/presets'
+import { defaultScenes, normalizeScenes } from '../../../shared/scenes'
+import { normalizeEffectId } from '../../../shared/effects'
 import { defaultShortcuts, normalizeShortcuts } from '../../../shared/shortcuts'
 import type { AppSettings, CameraDevice } from '../../../shared/types'
 
@@ -79,7 +81,9 @@ export function defaultSettings(): AppSettings {
     },
     shortcuts: { ...defaultShortcuts },
     presets: defaultPresets.map((p) => ({ ...p, border: { ...p.border } })),
-    activePresetId: 'preset-coding'
+    activePresetId: 'preset-coding',
+    scenes: defaultScenes.map((s) => ({ ...s })),
+    activeSceneId: 'scene-coding'
   }
 }
 
@@ -104,6 +108,66 @@ export function loadSettings(): void {
     if (!migrated) return
 
     settings = defaultSettings()
+    // Native v2 snapshot (written by saveSettings): restore sections directly.
+    if (raw && raw.version === 2) {
+      const cam = (raw.camera ?? {}) as Record<string, unknown>
+      const assign = <K extends keyof typeof settings.camera>(
+        key: K,
+        value: unknown,
+        validate: (v: unknown) => boolean
+      ): void => {
+        if (validate(value)) settings.camera[key] = value as never
+      }
+      const isString = (v: unknown): v is string => typeof v === 'string'
+      const isNumber = (v: unknown): v is number => typeof v === 'number'
+      const isBoolean = (v: unknown): v is boolean => typeof v === 'boolean'
+      assign('selectedDeviceId', cam.selectedDeviceId, isString)
+      assign('isMirrored', cam.isMirrored, isBoolean)
+      assign('shape', cam.shape, isString)
+      assign('size', cam.size, isString)
+      assign('rounding', cam.rounding, isNumber)
+      assign('alwaysOnTop', cam.alwaysOnTop, isBoolean)
+      assign('opacity', cam.opacity, isNumber)
+      assign('language', cam.language, isString)
+      assign('cameraScreenId', cam.cameraScreenId, isString)
+      assign('recordingScreenId', cam.recordingScreenId, isString)
+      assign('sidebarWidthPercentage', cam.sidebarWidthPercentage, isNumber)
+      assign('sidebarPosition', cam.sidebarPosition, isString)
+      if (cam.border && typeof cam.border === 'object') {
+        const b = cam.border as Record<string, unknown>
+        settings.camera.border = {
+          gradient: typeof b.gradient === 'string' ? b.gradient : 'none',
+          width: typeof b.width === 'number' ? b.width : 4,
+          animated: typeof b.animated === 'boolean' ? b.animated : false,
+          pulse: typeof b.pulse === 'boolean' ? b.pulse : false
+        }
+      }
+      settings.camera.effect = normalizeEffectId(cam.effect)
+      if (typeof cam.x === 'number') settings.camera.x = cam.x
+      if (typeof cam.y === 'number') settings.camera.y = cam.y
+      const rec = (raw.recording ?? {}) as Record<string, unknown>
+      for (const key of [
+        'folder',
+        'resolution',
+        'fps',
+        'encoder',
+        'mode',
+        'systemAudioVolume',
+        'microphoneAudioVolume',
+        'selectedMicrophoneId'
+      ] as const) {
+        if (rec[key] !== undefined) {
+          ;(settings.recording as unknown as Record<string, unknown>)[key] = rec[key]
+        }
+      }
+      const shot = (raw.screenshot ?? {}) as Record<string, unknown>
+      if (shot.folder !== undefined) settings.screenshot.folder = shot.folder as string
+      if (typeof shot.includeCamera === 'boolean') {
+        settings.screenshot.includeCamera = shot.includeCamera
+      }
+      const audio = (raw.audio ?? {}) as Record<string, unknown>
+      if (typeof audio.micMuted === 'boolean') settings.audio.micMuted = audio.micMuted
+    }
     if (migrated.state) {
       const s = migrated.state as Record<string, unknown>
       // Legacy flat keys
@@ -119,7 +183,8 @@ export function loadSettings(): void {
         settings.camera.border = {
           gradient: (b.gradient as string) ?? 'none',
           width: (b.width as number) ?? 4,
-          animated: (b.animated as boolean) ?? false
+          animated: (b.animated as boolean) ?? false,
+          pulse: (b.pulse as boolean) ?? false
         }
       }
       settings.camera.language =
@@ -146,6 +211,20 @@ export function loadSettings(): void {
     if (Array.isArray(migrated.presets)) settings.presets = normalizePresets(migrated.presets)
     if (typeof migrated.activePresetId === 'string')
       settings.activePresetId = migrated.activePresetId
+    const presetIds = new Set(settings.presets.map((p) => p.id))
+    if (Array.isArray(migrated.scenes)) {
+      const loaded = normalizeScenes(migrated.scenes, presetIds)
+      if (loaded.length > 0) settings.scenes = loaded
+    }
+    if (
+      typeof migrated.activeSceneId === 'string' &&
+      settings.scenes.some((s) => s.id === migrated.activeSceneId)
+    ) {
+      settings.activeSceneId = migrated.activeSceneId
+    }
+    if (!settings.scenes.some((s) => s.id === settings.activeSceneId)) {
+      settings.activeSceneId = settings.scenes[0]?.id ?? ''
+    }
   } catch (err) {
     console.warn('[vyra] failed to load settings, using defaults:', err)
     settings = defaultSettings()
@@ -190,6 +269,8 @@ export function resetSection(section: string): void {
     case 'presets':
       settings.presets = fresh.presets.map((p) => ({ ...p, border: { ...p.border } }))
       settings.activePresetId = fresh.activePresetId
+      settings.scenes = fresh.scenes.map((s) => ({ ...s }))
+      settings.activeSceneId = fresh.activeSceneId
       break
     default:
       settings = fresh

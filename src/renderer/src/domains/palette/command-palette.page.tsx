@@ -9,6 +9,7 @@ import {
   Clapperboard,
   FlipHorizontal2,
   Image,
+  Layers,
   Mic,
   Pin,
   Search,
@@ -16,7 +17,7 @@ import {
   Sparkles
 } from 'lucide-react'
 import { t } from '../../../../shared/i18n'
-import type { AppLanguage, CameraPreset } from '../../../../shared/types'
+import type { AppLanguage, CameraPreset, Scene } from '../../../../shared/types'
 
 interface PaletteCommand {
   id: string
@@ -31,6 +32,7 @@ export function CommandPalettePage(): React.JSX.Element {
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
   const [presets, setPresets] = useState<CameraPreset[]>([])
+  const [scenes, setScenes] = useState<Scene[]>([])
   const [lang, setLang] = useState<AppLanguage>('en')
   const [isRecording, setIsRecording] = useState(false)
   const [isCameraOn, setIsCameraOn] = useState(true)
@@ -54,6 +56,7 @@ export function CommandPalettePage(): React.JSX.Element {
         setLang(s.camera.language ?? 'en')
         setIsRecording(s.camera.isRecording ?? false)
         setIsCameraOn(s.isCameraOn ?? true)
+        setScenes(Array.isArray(s.scenes) ? s.scenes : [])
       })
       .catch(() => undefined)
     const offEsc = (e: KeyboardEvent): void => {
@@ -120,6 +123,14 @@ export function CommandPalettePage(): React.JSX.Element {
         icon: <Mic size={iconSize} />,
         run: (): void => window.vyra?.paletteRunAction('micMute')
       },
+      ...scenes.slice(0, 6).map((scene, i) => ({
+        id: `scene-${scene.id}`,
+        group: t('palette.group.scenes', lang),
+        label: scene.name,
+        hint: i < 3 ? `F${5 + i}` : 'scene',
+        icon: <Layers size={iconSize} />,
+        run: (): void => window.vyra?.scenesApply(scene.id)
+      })),
       {
         id: 'open-settings',
         group: t('palette.group.app', lang),
@@ -139,7 +150,7 @@ export function CommandPalettePage(): React.JSX.Element {
         run: (): void => window.vyra?.paletteApplyPreset(preset.id)
       }))
     ]
-  }, [presets, lang, isRecording, isCameraOn])
+  }, [presets, scenes, lang, isRecording, isCameraOn])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()

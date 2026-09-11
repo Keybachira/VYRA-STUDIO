@@ -56,6 +56,10 @@ const api = {
   presetsApply: (id: string): void => ipcRenderer.send('presets-apply', id),
   presetsCapture: (name: string): void => ipcRenderer.send('presets-capture', name),
 
+  scenesCreate: (name: string): Promise<unknown> => ipcRenderer.invoke('scenes-create', name),
+  scenesDelete: (id: string): Promise<boolean> => ipcRenderer.invoke('scenes-delete', id),
+  scenesApply: (id: string): void => ipcRenderer.send('scenes-apply', id),
+
   paletteRunAction: (action: string): void => ipcRenderer.send('palette-run-action', action),
   paletteApplyPreset: (id: string): void => ipcRenderer.send('palette-apply-preset', id),
   closePalette: (): void => ipcRenderer.send('close-palette'),

@@ -5,11 +5,13 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { getGradient } from '../../../../shared/colors'
+import { effectById, effectFilter, normalizeEffectId } from '../../../../shared/effects'
 import { dimensionsForShape, SIZES } from '../../../../shared/presets'
 import type { SnapPosition } from '../../../../shared/types'
 import { useCameraDevices } from './hooks/use-camera-devices'
 import { useCameraStream } from './hooks/use-camera-stream'
 import { useCameraEvents } from './hooks/use-camera-events'
+import { useAudioPulse } from './hooks/use-audio-pulse'
 import { PermissionErrorOverlay } from './components/permission-error-overlay'
 import { ScreenPermissionErrorOverlay } from './components/screen-permission-error-overlay'
 import { MicPermissionErrorOverlay } from './components/mic-permission-error-overlay'
@@ -135,6 +137,7 @@ export function CameraPage(): React.JSX.Element {
   const currentDragPos = useRef({ x: 0, y: 0 })
   const containerRef = useRef<HTMLDivElement>(null)
   const videoWrapRef = useRef<HTMLDivElement>(null)
+  const pulseGlowRef = useRef<HTMLDivElement | null>(null)
   // Fullscreen click-through overlay: the window swallows every click while
   // mouse capture is on, so track the state and always force it back off.
   const captureRef = useRef(false)
@@ -199,8 +202,10 @@ export function CameraPage(): React.JSX.Element {
           border: (c.border as typeof camera.border) ?? {
             gradient: 'none',
             width: 4,
-            animated: false
+            animated: false,
+            pulse: false
           },
+          effect: normalizeEffectId(c.effect),
           language: (c.language as 'en' | 'pt') ?? 'en',
           cameraScreenId: (c.cameraScreenId as string) ?? '',
           sidebarWidthPercentage: (c.sidebarWidthPercentage as number) ?? 35,
@@ -247,6 +252,10 @@ export function CameraPage(): React.JSX.Element {
   )
 
   useCameraEvents({ snapTo, applySize })
+
+  const pulseActive =
+    camera.border.pulse && camera.powerOn && camera.size !== 'fullscreen' && !hasPermissionError
+  useAudioPulse({ enabled: pulseActive, glowRef: pulseGlowRef })
 
   // ── Drag handling ─────────────────────────────────────────────────────────
   const handleMouseDown = useCallback(
@@ -347,6 +356,12 @@ export function CameraPage(): React.JSX.Element {
         canvas.height = video.videoHeight
         const ctx = canvas.getContext('2d')
         if (!ctx) return
+        // Bake the live effect into screenshots.
+        try {
+          ctx.filter = effectFilter(camera.effect)
+        } catch {
+          /* older canvas backends ignore filter */
+        }
         if (camera.isMirrored) {
           ctx.translate(canvas.width, 0)
           ctx.scale(-1, 1)
@@ -359,7 +374,7 @@ export function CameraPage(): React.JSX.Element {
       }
     })
     return off
-  }, [camera.isMirrored, videoRef])
+  }, [camera.isMirrored, camera.effect, videoRef])
 
   const handleDetectionRetry = useCallback((): void => {
     refreshDevices()
@@ -425,6 +440,20 @@ export function CameraPage(): React.JSX.Element {
           }}
         />
       )}
+      {camera.border.pulse && !isFullscreen && !hasPermissionError && (
+        <div
+          aria-hidden
+          ref={pulseGlowRef}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            borderRadius: 'inherit',
+            pointerEvents: 'none',
+            opacity: 0,
+            zIndex: 2
+          }}
+        />
+      )}
       <div
         ref={videoWrapRef}
         style={{
@@ -445,9 +474,22 @@ export function CameraPage(): React.JSX.Element {
             height: '100%',
             objectFit: 'cover',
             transform: camera.isMirrored ? 'scaleX(-1)' : 'scaleX(1)',
+            filter: effectFilter(camera.effect) || undefined,
             display: hasPermissionError ? 'none' : 'block'
           }}
         />
+        {effectById(camera.effect).vignette && !hasPermissionError && (
+          <div
+            aria-hidden
+            style={{
+              position: 'absolute',
+              inset: 0,
+              pointerEvents: 'none',
+              background:
+                'radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.42) 100%)'
+            }}
+          />
+        )}
         {camera.powerOn && !hasPermissionError && <CameraHud />}
       </div>
       {hasPermissionError && (

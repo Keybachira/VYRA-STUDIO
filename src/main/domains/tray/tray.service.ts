@@ -9,7 +9,7 @@ import trayIcon from '../../../../resources/tray.png?asset'
 import trayRecIcon from '../../../../resources/tray-rec.png?asset'
 import { t } from '../../../shared/i18n'
 import { APP_NAME } from '../../../shared/brand'
-import type { CameraPreset, CameraDevice } from '../../../shared/types'
+import type { CameraPreset, CameraDevice, Scene } from '../../../shared/types'
 import { getIsCameraOn } from '../camera/camera.service'
 import { settings } from '../settings/settings.service'
 import { createSettingsWindow } from '../window/window.service'
@@ -25,6 +25,7 @@ export interface TrayActions {
   screenshot: () => void
   toggleMicMute: () => void
   applyPreset: (id: string) => void
+  applyScene: (id: string) => void
   openPalette: () => void
 }
 
@@ -36,6 +37,7 @@ let actions: TrayActions = {
   screenshot: (): void => undefined,
   toggleMicMute: (): void => undefined,
   applyPreset: (): void => undefined,
+  applyScene: (): void => undefined,
   openPalette: (): void => undefined
 }
 
@@ -79,6 +81,12 @@ export function updateTray(): void {
     checked: preset.id === settings.activePresetId,
     click: (): void => actions.applyPreset(preset.id)
   }))
+  const sceneItems = settings.scenes.slice(0, 8).map((scene: Scene) => ({
+    label: scene.name,
+    type: 'radio' as const,
+    checked: scene.id === settings.activeSceneId,
+    click: (): void => actions.applyScene(scene.id)
+  }))
 
   const menu = Menu.buildFromTemplate([
     {
@@ -96,6 +104,10 @@ export function updateTray(): void {
       click: (): void => actions.toggleMicMute()
     },
     { type: 'separator' },
+    {
+      label: t('tray.scenes', lang),
+      submenu: sceneItems
+    },
     {
       label: t('tray.presets', lang),
       submenu: [
